@@ -1,0 +1,339 @@
+/* KISS Smart Batch Installer Admin Styles */
+
+.kiss-sbi-header {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 20px 0;
+    padding: 15px;
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+}
+
+.kiss-sbi-header p {
+    margin: 0;
+    font-size: 14px;
+}
+
+.kiss-sbi-actions {
+    display: flex;
+    gap: 10px;
+}
+
+.kiss-sbi-actions .button {
+    white-space: nowrap;
+}
+
+/* Repository Table Styles */
+.wp-list-table .kiss-sbi-plugin-status {
+    width: 150px;
+    text-align: center;
+}
+
+.kiss-sbi-plugin-yes {
+    color: #46b450;
+    font-weight: 600;
+}
+
+.kiss-sbi-plugin-no {
+    color: #dc3232;
+    font-weight: 600;
+}
+
+.kiss-sbi-plugin-error {
+    color: #ffb900;
+    font-weight: 600;
+}
+
+.kiss-sbi-check-plugin {
+    min-width: 60px;
+}
+
+.kiss-sbi-install-single {
+    min-width: 60px;
+}
+
+.kiss-sbi-install-single.button-disabled {
+    background: #46b450;
+    color: white;
+    border-color: #46b450;
+}
+
+/* Batch Options */
+.kiss-sbi-batch-options {
+    margin-top: 15px;
+    padding: 10px;
+    background: #f9f9f9;
+    border-left: 4px solid #0073aa;
+}
+
+.kiss-sbi-batch-options label {
+    font-weight: 600;
+    cursor: pointer;
+}
+
+/* Progress Tracking */
+#kiss-sbi-install-progress {
+    margin-top: 30px;
+    padding: 20px;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    background: #fff;
+}
+
+#kiss-sbi-install-progress h3 {
+    margin-top: 0;
+    margin-bottom: 15px;
+}
+
+.kiss-sbi-progress-item {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    padding: 8px 12px;
+    margin-bottom: 5px;
+    border-radius: 3px;
+    background: #f9f9f9;
+}
+
+.kiss-sbi-progress-repo {
+    font-weight: 600;
+    flex: 1;
+}
+
+.kiss-sbi-progress-status {
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    min-width: 80px;
+    text-align: center;
+}
+
+.kiss-sbi-progress-status.installing {
+    background: #ffb900;
+    color: white;
+}
+
+.kiss-sbi-progress-status.success {
+    background: #46b450;
+    color: white;
+}
+
+.kiss-sbi-progress-status.error {
+    background: #dc3232;
+    color: white;
+}
+
+/* Settings Page */
+.kiss-sbi-settings-info {
+    margin-top: 40px;
+    max-width: 800px;
+}
+
+.kiss-sbi-settings-info h3 {
+    margin-top: 30px;
+    margin-bottom: 10px;
+    color: #23282d;
+}
+
+.kiss-sbi-settings-info ol,
+.kiss-sbi-settings-info ul {
+    margin-left: 20px;
+}
+
+.kiss-sbi-settings-info li {
+    margin-bottom: 8px;
+    line-height: 1.5;
+}
+
+/* Responsive Design */
+@media screen and (max-width: 782px) {
+    .kiss-sbi-header {
+        flex-direction: column;
+        gap: 15px;
+        align-items: stretch;
+    }
+
+    .kiss-sbi-actions {
+        justify-content: center;
+    }
+
+    .kiss-sbi-progress-item {
+        flex-direction: column;
+        gap: 8px;
+        align-items: stretch;
+    }
+
+    .kiss-sbi-progress-status {
+        text-align: center;
+    }
+}
+
+/* Loading States */
+.kiss-sbi-loading {
+    opacity: 0.6;
+    pointer-events: none;
+}
+
+.kiss-sbi-loading::after {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 20px;
+    height: 20px;
+    margin: -10px 0 0 -10px;
+    border: 2px solid #f3f3f3;
+    border-top: 2px solid #0073aa;
+    border-radius: 50%;
+    animation: kiss-sbi-spin 1s linear infinite;
+}
+
+@keyframes kiss-sbi-spin {
+    0% { transform: rotate(0deg); }
+    100% { transform: rotate(360deg); }
+}
+
+/* Notice Enhancements */
+.notice.kiss-sbi-notice {
+    margin-top: 20px;
+}
+
+.notice.kiss-sbi-notice p {
+    margin: 0.5em 0;
+}
+
+/* Empty State */
+.kiss-sbi-empty-state {
+    text-align: center;
+    padding: 60px 20px;
+    background: #f9f9f9;
+    border: 1px solid #ddd;
+    border-radius: 4px;
+    margin: 20px 0;
+}
+
+.kiss-sbi-empty-state h3 {
+    margin-bottom: 15px;
+    color: #666;
+}
+
+.kiss-sbi-empty-state p {
+    color: #666;
+    font-size: 14px;
+    line-height: 1.5;
+}
+
+/* Plugin Status Icons */
+.kiss-sbi-plugin-status .dashicons {
+    font-size: 16px;
+    width: 16px;
+    height: 16px;
+    vertical-align: middle;
+}
+
+.kiss-sbi-plugin-yes .dashicons {
+    color: #46b450;
+}
+
+.kiss-sbi-plugin-no .dashicons {
+    color: #dc3232;
+}
+
+.kiss-sbi-plugin-error .dashicons {
+    color: #ffb900;
+}
+
+/* Tooltips */
+.kiss-sbi-tooltip {
+    position: relative;
+    cursor: help;
+}
+
+.kiss-sbi-tooltip:hover::after {
+    content: attr(title);
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    background: #000;
+    color: #fff;
+    padding: 5px 10px;
+    border-radius: 3px;
+    font-size: 12px;
+    white-space: nowrap;
+    z-index: 1000;
+}
+
+.kiss-sbi-tooltip:hover::before {
+    content: '';
+    position: absolute;
+    bottom: 100%;
+    left: 50%;
+    transform: translateX(-50%);
+    border: 5px solid transparent;
+    border-top-color: #000;
+    z-index: 1000;
+}
+
+/* Accessibility Improvements */
+.kiss-sbi-visually-hidden {
+    position: absolute !important;
+    height: 1px;
+    width: 1px;
+    overflow: hidden;
+    clip: rect(1px, 1px, 1px, 1px);
+    white-space: nowrap;
+}
+
+/* Focus States */
+.kiss-sbi-repo-checkbox:focus,
+.kiss-sbi-check-plugin:focus,
+.kiss-sbi-install-single:focus {
+    outline: 2px solid #0073aa;
+    outline-offset: 2px;
+}
+
+/* Button States */
+.button:disabled,
+.button.disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* Table Enhancements */
+.wp-list-table tbody tr:hover {
+    background-color: #f9f9f9;
+}
+
+.wp-list-table th.check-column,
+.wp-list-table td.check-column {
+    padding-left: 10px;
+}
+
+/* Status Badges */
+.kiss-sbi-status-badge {
+    display: inline-block;
+    padding: 3px 8px;
+    border-radius: 12px;
+    font-size: 11px;
+    font-weight: 600;
+    text-transform: uppercase;
+    letter-spacing: 0.5px;
+}
+
+.kiss-sbi-status-badge.success {
+    background: #d4edda;
+    color: #155724;
+}
+
+.kiss-sbi-status-badge.error {
+    background: #f8d7da;
+    color: #721c24;
+}
+
+.kiss-sbi-status-badge.warning {
+    background: #fff3cd;
+    color: #856404;
+}
