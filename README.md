@@ -157,6 +157,12 @@ This plugin is licensed under the GPL v2 or later.
 
 ## Changelog
 
+### 1.0.1
+- Fix: Prevent 500 errors during status checks by loading WordPress plugin functions in AJAX
+- Fix: Correctly detect already-activated plugins (uses get_plugins and network-activation check)
+- Change: UI now shows "Already Activated" for active plugins and "Activate →" for inactive installed plugins
+- Change: Added subtle CSS styling for the new status label
+
 ### 1.0.0
 - Initial release
 - GitHub organization repository scraping
