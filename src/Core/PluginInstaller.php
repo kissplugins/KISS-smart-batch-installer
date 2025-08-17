@@ -386,7 +386,27 @@ class PluginInstaller
 
         $target_slug = sanitize_title($repo_name);
 
-        // Find the actual directory name (case-insensitive match)
+        // First, use WordPress' plugin registry for a robust match
+        if (!function_exists('get_plugins')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+        $plugins = function_exists('get_plugins') ? get_plugins() : [];
+        foreach ($plugins as $plugin_file_rel => $data) {
+            $parts = explode('/', $plugin_file_rel, 2);
+            $dir = $parts[0];
+            if (strtolower($dir) === strtolower($target_slug)) {
+                $plugin_path = $plugin_file_rel; // e.g. my-plugin/my-plugin.php
+                $active = is_plugin_active($plugin_path) || (function_exists('is_plugin_active_for_network') && is_plugin_active_for_network($plugin_path));
+                return [
+                    'installed' => true,
+                    'plugin_file' => $plugin_path,
+                    'active' => $active,
+                    'plugin_data' => $data
+                ];
+            }
+        }
+
+        // Fallback: find directory by case-insensitive scan and detect main file
         $actual_dir = null;
         $entries = @scandir(WP_PLUGIN_DIR) ?: [];
         foreach ($entries as $entry) {
