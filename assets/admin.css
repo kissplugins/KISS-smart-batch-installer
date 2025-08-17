@@ -337,3 +337,54 @@
     background: #fff3cd;
     color: #856404;
 }
+
+/* Plugin Active Status */
+.kiss-sbi-plugin-active {
+    color: #00a32a;
+    font-weight: 600;
+}
+
+.kiss-sbi-plugin-already-activated {
+    color: #666;
+    font-weight: 500;
+    font-style: italic;
+}
+
+/* Activate Plugin Buttons */
+.kiss-sbi-activate-plugin {
+    background: #00a32a;
+    border-color: #00a32a;
+    color: white;
+}
+
+.kiss-sbi-activate-plugin:hover {
+    background: #008a20;
+    border-color: #008a20;
+}
+
+.kiss-sbi-progress-item .kiss-sbi-activate-plugin {
+    margin-left: 8px;
+    font-size: 11px;
+    padding: 2px 8px;
+    height: auto;
+    line-height: 1.2;
+}
+
+/* Check Status Button */
+.kiss-sbi-check-installed {
+    background: #0073aa;
+    border-color: #0073aa;
+    color: white;
+}
+
+.kiss-sbi-check-installed:hover {
+    background: #005a87;
+    border-color: #005a87;
+}
+
+/* Pagination Styles */
+.tablenav.bottom {
+    margin-top: 20px;
+    padding-top: 10px;
+    border-top: 1px solid #ddd;
+}

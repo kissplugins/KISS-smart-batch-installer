@@ -166,7 +166,19 @@ class AdminInterface
             return;
         }
 
-        $repositories = $this->github_scraper->getRepositories();
+        // Handle pagination
+        $current_page = max(1, (int) ($_GET['paged'] ?? 1));
+        $per_page = 15;
+
+        $result = $this->github_scraper->getRepositories(false, $current_page, $per_page);
+
+        if (is_wp_error($result)) {
+            $repositories = $result;
+            $pagination = null;
+        } else {
+            $repositories = $result['repositories'];
+            $pagination = $result['pagination'];
+        }
 
         ?>
         <div class="wrap">
@@ -193,6 +205,9 @@ class AdminInterface
             <?php else: ?>
                 <form id="kiss-sbi-plugins-form">
                     <?php $this->renderRepositoriesTable($repositories); ?>
+                    <?php if ($pagination && $pagination['total_pages'] > 1): ?>
+                        <?php $this->renderPagination($pagination); ?>
+                    <?php endif; ?>
                 </form>
             <?php endif; ?>
 
@@ -270,7 +285,10 @@ class AdminInterface
                             </button>
                         </td>
                         <td>
-                            <button type="button" class="button button-small kiss-sbi-install-single" data-repo="<?php echo esc_attr($repo['name']); ?>" disabled>
+                            <button type="button" class="button button-small kiss-sbi-check-installed" data-repo="<?php echo esc_attr($repo['name']); ?>">
+                                <?php _e('Check Status', 'kiss-smart-batch-installer'); ?>
+                            </button>
+                            <button type="button" class="button button-small kiss-sbi-install-single" data-repo="<?php echo esc_attr($repo['name']); ?>" disabled style="display: none;">
                                 <?php _e('Install', 'kiss-smart-batch-installer'); ?>
                             </button>
                         </td>
@@ -285,6 +303,81 @@ class AdminInterface
                 <?php _e('Activate plugins after installation', 'kiss-smart-batch-installer'); ?>
             </label>
         </p>
+        <?php
+    }
+
+    /**
+     * Render pagination
+     */
+    private function renderPagination($pagination)
+    {
+        $current_page = $pagination['current_page'];
+        $total_pages = $pagination['total_pages'];
+        $total_items = $pagination['total_items'];
+
+        $base_url = admin_url('plugins.php?page=kiss-smart-batch-installer');
+
+        ?>
+        <div class="tablenav bottom">
+            <div class="alignleft actions">
+                <span class="displaying-num">
+                    <?php printf(_n('%s item', '%s items', $total_items, 'kiss-smart-batch-installer'), number_format_i18n($total_items)); ?>
+                </span>
+            </div>
+
+            <?php if ($total_pages > 1): ?>
+                <div class="tablenav-pages">
+                    <span class="pagination-links">
+                        <?php if ($current_page > 1): ?>
+                            <a class="first-page button" href="<?php echo esc_url($base_url . '&paged=1'); ?>">
+                                <span class="screen-reader-text"><?php _e('First page', 'kiss-smart-batch-installer'); ?></span>
+                                <span aria-hidden="true">«</span>
+                            </a>
+                            <a class="prev-page button" href="<?php echo esc_url($base_url . '&paged=' . ($current_page - 1)); ?>">
+                                <span class="screen-reader-text"><?php _e('Previous page', 'kiss-smart-batch-installer'); ?></span>
+                                <span aria-hidden="true">‹</span>
+                            </a>
+                        <?php else: ?>
+                            <span class="tablenav-pages-navspan button disabled" aria-hidden="true">«</span>
+                            <span class="tablenav-pages-navspan button disabled" aria-hidden="true">‹</span>
+                        <?php endif; ?>
+
+                        <span class="paging-input">
+                            <label for="current-page-selector" class="screen-reader-text"><?php _e('Current Page', 'kiss-smart-batch-installer'); ?></label>
+                            <input class="current-page" id="current-page-selector" type="text" name="paged" value="<?php echo esc_attr($current_page); ?>" size="<?php echo strlen($total_pages); ?>" aria-describedby="table-paging" />
+                            <span class="tablenav-paging-text"> <?php _e('of', 'kiss-smart-batch-installer'); ?> <span class="total-pages"><?php echo esc_html($total_pages); ?></span></span>
+                        </span>
+
+                        <?php if ($current_page < $total_pages): ?>
+                            <a class="next-page button" href="<?php echo esc_url($base_url . '&paged=' . ($current_page + 1)); ?>">
+                                <span class="screen-reader-text"><?php _e('Next page', 'kiss-smart-batch-installer'); ?></span>
+                                <span aria-hidden="true">›</span>
+                            </a>
+                            <a class="last-page button" href="<?php echo esc_url($base_url . '&paged=' . $total_pages); ?>">
+                                <span class="screen-reader-text"><?php _e('Last page', 'kiss-smart-batch-installer'); ?></span>
+                                <span aria-hidden="true">»</span>
+                            </a>
+                        <?php else: ?>
+                            <span class="tablenav-pages-navspan button disabled" aria-hidden="true">›</span>
+                            <span class="tablenav-pages-navspan button disabled" aria-hidden="true">»</span>
+                        <?php endif; ?>
+                    </span>
+                </div>
+            <?php endif; ?>
+        </div>
+
+        <script>
+        jQuery(document).ready(function($) {
+            $('#current-page-selector').on('keypress', function(e) {
+                if (e.which === 13) { // Enter key
+                    var page = parseInt($(this).val());
+                    if (page > 0 && page <= <?php echo $total_pages; ?>) {
+                        window.location.href = '<?php echo esc_js($base_url); ?>&paged=' + page;
+                    }
+                }
+            });
+        });
+        </script>
         <?php
     }
     

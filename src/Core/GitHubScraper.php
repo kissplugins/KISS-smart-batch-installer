@@ -28,31 +28,55 @@ class GitHubScraper
     /**
      * Get repositories from cache or scrape fresh data
      */
-    public function getRepositories($force_refresh = false)
+    public function getRepositories($force_refresh = false, $page = 1, $per_page = null)
     {
         if (empty($this->org_name)) {
             return new \WP_Error('no_org', __('No GitHub organization configured.', 'kiss-smart-batch-installer'));
         }
 
+        if ($per_page === null) {
+            $per_page = $this->repo_limit;
+        }
+
         $cache_key = 'kiss_sbi_repositories_' . sanitize_key($this->org_name);
-        
+
         if (!$force_refresh) {
             $cached_repos = get_transient($cache_key);
             if ($cached_repos !== false) {
-                return $cached_repos;
+                return $this->paginateRepositories($cached_repos, $page, $per_page);
             }
         }
-        
+
         $repositories = $this->scrapeOrganizationRepos();
-        
+
         if (is_wp_error($repositories)) {
             return $repositories;
         }
-        
+
         // Cache the results
         set_transient($cache_key, $repositories, $this->cache_duration);
-        
-        return $repositories;
+
+        return $this->paginateRepositories($repositories, $page, $per_page);
+    }
+
+    /**
+     * Paginate repositories array
+     */
+    private function paginateRepositories($repositories, $page = 1, $per_page = 15)
+    {
+        $total = count($repositories);
+        $offset = ($page - 1) * $per_page;
+        $paged_repos = array_slice($repositories, $offset, $per_page);
+
+        return [
+            'repositories' => $paged_repos,
+            'pagination' => [
+                'current_page' => $page,
+                'per_page' => $per_page,
+                'total_items' => $total,
+                'total_pages' => ceil($total / $per_page)
+            ]
+        ];
     }
     
     /**
