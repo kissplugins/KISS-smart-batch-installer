@@ -18,6 +18,8 @@ class PluginInstaller
         // AJAX handlers
         add_action('wp_ajax_kiss_sbi_install_plugin', [$this, 'ajaxInstallPlugin']);
         add_action('wp_ajax_kiss_sbi_batch_install', [$this, 'ajaxBatchInstall']);
+        add_action('wp_ajax_kiss_sbi_activate_plugin', [$this, 'ajaxActivatePlugin']);
+        add_action('wp_ajax_kiss_sbi_check_installed', [$this, 'ajaxCheckInstalled']);
     }
     
     /**
@@ -369,6 +371,111 @@ class PluginInstaller
                 'success' => $success_count,
                 'errors' => $error_count
             ]
+        ]);
+    }
+
+    /**
+     * Check if a plugin is already installed
+     */
+    public function isPluginInstalled($repo_name)
+    {
+        // Ensure WordPress plugin functions are available during AJAX requests
+        if (!function_exists('is_plugin_active') || !function_exists('get_plugin_data')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+
+        $target_slug = sanitize_title($repo_name);
+
+        // Find the actual directory name (case-insensitive match)
+        $actual_dir = null;
+        $entries = @scandir(WP_PLUGIN_DIR) ?: [];
+        foreach ($entries as $entry) {
+            if ($entry === '.' || $entry === '..') { continue; }
+            $full = WP_PLUGIN_DIR . '/' . $entry;
+            if (is_dir($full) && strtolower($entry) === strtolower($target_slug)) {
+                $actual_dir = $entry; // preserve real casing
+                break;
+            }
+        }
+
+        if (!$actual_dir) {
+            return false;
+        }
+
+        $plugin_dir = WP_PLUGIN_DIR . '/' . $actual_dir;
+
+        // Find the main plugin file
+        $plugin_file = $this->findMainPluginFile($plugin_dir, $repo_name);
+        if (!$plugin_file) {
+            return false;
+        }
+
+        $plugin_path = $actual_dir . '/' . $plugin_file;
+
+        $active = is_plugin_active($plugin_path);
+        if (!$active && function_exists('is_plugin_active_for_network')) {
+            $active = is_plugin_active_for_network($plugin_path);
+        }
+
+        return [
+            'installed' => true,
+            'plugin_file' => $plugin_path,
+            'active' => $active,
+            'plugin_data' => get_plugin_data($plugin_dir . '/' . $plugin_file)
+        ];
+    }
+
+    /**
+     * AJAX handler for checking if plugin is installed
+     */
+    public function ajaxCheckInstalled()
+    {
+        check_ajax_referer('kiss_sbi_admin_nonce', 'nonce');
+
+        if (!current_user_can('install_plugins')) {
+            wp_die(__('Insufficient permissions.', 'kiss-smart-batch-installer'));
+        }
+
+        $repo_name = sanitize_text_field($_POST['repo_name'] ?? '');
+
+        if (empty($repo_name)) {
+            wp_send_json_error(__('Repository name is required.', 'kiss-smart-batch-installer'));
+        }
+
+        $result = $this->isPluginInstalled($repo_name);
+
+        wp_send_json_success([
+            'installed' => $result !== false,
+            'data' => $result
+        ]);
+    }
+
+    /**
+     * AJAX handler for activating a plugin
+     */
+    public function ajaxActivatePlugin()
+    {
+        check_ajax_referer('kiss_sbi_admin_nonce', 'nonce');
+
+        if (!current_user_can('activate_plugins')) {
+            wp_die(__('Insufficient permissions.', 'kiss-smart-batch-installer'));
+        }
+
+        $plugin_file = sanitize_text_field($_POST['plugin_file'] ?? '');
+
+        if (empty($plugin_file)) {
+            wp_send_json_error(__('Plugin file is required.', 'kiss-smart-batch-installer'));
+        }
+
+        $result = $this->activatePlugin($plugin_file);
+
+        if (is_wp_error($result)) {
+            wp_send_json_error($result->get_error_message());
+        }
+
+        wp_send_json_success([
+            'activated' => true,
+            'plugin_file' => $plugin_file
         ]);
     }
 }

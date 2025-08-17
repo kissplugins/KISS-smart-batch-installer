@@ -26,10 +26,17 @@ jQuery(document).ready(function($) {
         $('#kiss-sbi-batch-install').on('click', batchInstallPlugins);
         $(document).on('click', '.kiss-sbi-check-plugin', checkPlugin);
         $(document).on('click', '.kiss-sbi-install-single', installSinglePlugin);
+        $(document).on('click', '.kiss-sbi-activate-plugin', activatePlugin);
+        $(document).on('click', '.kiss-sbi-check-installed', checkInstalled);
     }
 
     function queueAllPluginChecks() {
-        // Add all check buttons to queue
+        // First check installation status for all repos
+        $('.kiss-sbi-check-installed').each(function() {
+            checkInstalledStatus(this);
+        });
+
+        // Then add all check buttons to queue
         $('.kiss-sbi-check-plugin').each(function() {
             pluginCheckQueue.push(this);
         });
@@ -216,8 +223,17 @@ jQuery(document).ready(function($) {
             },
             success: function(response) {
                 if (response.success) {
-                    $button.text(kissSbiAjax.strings.installed).addClass('button-disabled');
-                    showSuccess('Plugin "' + repoName + '" installed successfully.');
+                    if (response.data.activated) {
+                        $button.text(kissSbiAjax.strings.installed).addClass('button-disabled');
+                        showSuccess('Plugin "' + repoName + '" installed and activated successfully.');
+                    } else {
+                        // Show activate button
+                        $button.replaceWith(
+                            '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' +
+                            response.data.plugin_file + '" data-repo="' + repoName + '">Activate →</button>'
+                        );
+                        showSuccess('Plugin "' + repoName + '" installed successfully. Click "Activate Now" to activate it.');
+                    }
                 } else {
                     $button.prop('disabled', false).text(originalText);
                     showError('Failed to install "' + repoName + '": ' + response.data);
@@ -292,11 +308,23 @@ jQuery(document).ready(function($) {
             },
             success: function(response) {
                 if (response.success) {
-                    $statusSpan.text('Installed').removeClass('installing').addClass('success');
+                    if (response.data.activated) {
+                        $statusSpan.text('Installed & Activated').removeClass('installing').addClass('success');
+                    } else {
+                        $statusSpan.html('Installed - <button type="button" class="button button-small kiss-sbi-activate-plugin" data-plugin-file="' +
+                            response.data.plugin_file + '" data-repo="' + repoName + '">Activate →</button>').removeClass('installing').addClass('success');
+                    }
 
                     // Update single install button if visible
                     const $singleButton = $('.kiss-sbi-install-single[data-repo="' + repoName + '"]');
-                    $singleButton.text(kissSbiAjax.strings.installed).addClass('button-disabled').prop('disabled', true);
+                    if (response.data.activated) {
+                        $singleButton.text(kissSbiAjax.strings.installed).addClass('button-disabled').prop('disabled', true);
+                    } else {
+                        $singleButton.replaceWith(
+                            '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' +
+                            response.data.plugin_file + '" data-repo="' + repoName + '">Activate →</button>'
+                        );
+                    }
                 } else {
                     $statusSpan.text('Error: ' + response.data).removeClass('installing').addClass('error');
                 }
@@ -337,6 +365,85 @@ jQuery(document).ready(function($) {
             $notice.fadeOut(function() {
                 $(this).remove();
             });
+        });
+    }
+
+    function checkInstalled() {
+        checkInstalledStatus(this);
+    }
+
+    function checkInstalledStatus(button) {
+        const $button = $(button);
+        const repoName = $button.data('repo');
+        const $actionsCell = $button.closest('td');
+        const $installButton = $actionsCell.find('.kiss-sbi-install-single');
+
+        $button.prop('disabled', true).text('Checking...');
+
+        $.ajax({
+            url: kissSbiAjax.ajaxUrl,
+            type: 'POST',
+            data: {
+                action: 'kiss_sbi_check_installed',
+                nonce: kissSbiAjax.nonce,
+                repo_name: repoName
+            },
+            success: function(response) {
+                if (response.success && response.data.installed) {
+                    const pluginData = response.data.data;
+                    if (pluginData.active) {
+                        $button.replaceWith('<span class="kiss-sbi-plugin-already-activated">Already Activated</span>');
+                    } else {
+                        $button.replaceWith(
+                            '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' +
+                            pluginData.plugin_file + '" data-repo="' + repoName + '">Activate →</button>'
+                        );
+                    }
+                } else {
+                    // Not installed - show install button
+                    $button.text('Not Installed').prop('disabled', true);
+                    $installButton.show().prop('disabled', false);
+                }
+            },
+            error: function() {
+                $button.prop('disabled', false).text('Check Status');
+            }
+        });
+    }
+
+    function activatePlugin() {
+        const $button = $(this);
+        const pluginFile = $button.data('plugin-file');
+        const repoName = $button.data('repo');
+
+        if (!confirm('Activate plugin "' + repoName + '"?')) {
+            return;
+        }
+
+        const originalText = $button.text();
+        $button.prop('disabled', true).text('Activating...');
+
+        $.ajax({
+            url: kissSbiAjax.ajaxUrl,
+            type: 'POST',
+            data: {
+                action: 'kiss_sbi_activate_plugin',
+                nonce: kissSbiAjax.nonce,
+                plugin_file: pluginFile
+            },
+            success: function(response) {
+                if (response.success) {
+                    $button.replaceWith('<span class="kiss-sbi-plugin-already-activated">Already Activated</span>');
+                    showSuccess('Plugin "' + repoName + '" activated successfully.');
+                } else {
+                    $button.prop('disabled', false).text(originalText);
+                    showError('Failed to activate "' + repoName + '": ' + response.data);
+                }
+            },
+            error: function() {
+                $button.prop('disabled', false).text(originalText);
+                showError('Ajax request failed for "' + repoName + '".');
+            }
         });
     }
 });
