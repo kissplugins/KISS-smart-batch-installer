@@ -5,6 +5,13 @@ jQuery(document).ready(function($) {
     let pluginCheckQueue = [];
     let isProcessingQueue = false;
 
+    // Debug helper
+    function dbg() {
+        if (typeof kissSbiAjax !== 'undefined' && kissSbiAjax && kissSbiAjax.debug) {
+            try { console.debug.apply(console, ['[KISS SBI]'].concat([].slice.call(arguments))); } catch (e) {}
+        }
+    }
+
     // Initialize
     init();
 
@@ -34,11 +41,13 @@ jQuery(document).ready(function($) {
     function queueAllPluginChecks() {
         // First check installation status for all repos
         $('.kiss-sbi-check-installed').each(function() {
+            dbg('Queue install status check for', $(this).data('repo'));
             checkInstalledStatus(this);
         });
 
         // Then add all check buttons to queue
         $('.kiss-sbi-check-plugin').each(function() {
+            dbg('Queue plugin check for', $(this).data('repo'));
             pluginCheckQueue.push(this);
         });
 
@@ -55,6 +64,7 @@ jQuery(document).ready(function($) {
         const button = pluginCheckQueue.shift();
 
         // Check this plugin
+        dbg('Processing check for', $(button).data('repo'));
         checkPluginQueued(button, function() {
             isProcessingQueue = false;
 
@@ -106,6 +116,7 @@ jQuery(document).ready(function($) {
         const $button = $('#kiss-sbi-refresh-repos');
         const originalText = $button.text();
 
+        dbg('Refresh Repositories clicked');
         $button.prop('disabled', true).text(kissSbiAjax.strings.loading || 'Loading...');
 
         $.ajax({
@@ -116,13 +127,15 @@ jQuery(document).ready(function($) {
                 nonce: kissSbiAjax.nonce
             },
             success: function(response) {
+                dbg('Refresh success', response);
                 if (response.success) {
                     location.reload();
                 } else {
                     showError('Failed to refresh repositories: ' + response.data);
                 }
             },
-            error: function() {
+            error: function(xhr) {
+                dbg('Refresh error', xhr);
                 showError('Ajax request failed.');
             },
             complete: function() {
@@ -134,12 +147,14 @@ jQuery(document).ready(function($) {
     function clearCache() {
         const $btn = $('#kiss-sbi-clear-cache');
         const original = $btn.text();
+        dbg('Clear Cache clicked');
         $btn.prop('disabled', true).text('Clearing...');
         $.ajax({
             url: kissSbiAjax.ajaxUrl,
             type: 'POST',
             data: { action: 'kiss_sbi_clear_cache', nonce: kissSbiAjax.nonce },
             success: function(resp){
+                dbg('Clear Cache success', resp);
                 if (resp.success) {
                     showSuccess('Cache cleared');
                     location.reload();
@@ -147,14 +162,8 @@ jQuery(document).ready(function($) {
                     showError('Failed to clear cache: ' + resp.data);
                 }
             },
-            error: function(){ showError('Ajax request failed.'); },
+            error: function(xhr){ dbg('Clear Cache error', xhr); showError('Ajax request failed.'); },
             complete: function(){ $btn.prop('disabled', false).text(original); }
-        });
-    }
-
-            complete: function() {
-                $button.prop('disabled', false).text(originalText);
-            }
         });
     }
 
@@ -209,7 +218,7 @@ jQuery(document).ready(function($) {
                     updateCheckedPlugins();
                     updateBatchInstallButton();
                 } else {
-                    $statusCell.html('<span class="kiss-sbi-plugin-error">Error checking</span>');
+                    $statusCell.html('<span class="kiss-sbi-plugin-error">Error checking</span>'); dbg('Scan failed', response);
                 }
 
                 // Call callback when done

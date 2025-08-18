@@ -122,6 +122,7 @@ class AdminInterface
         wp_localize_script('kiss-sbi-admin', 'kissSbiAjax', [
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('kiss_sbi_admin_nonce'),
+            'debug' => (bool) apply_filters('kiss_sbi_debug', true),
             'strings' => [
                 'installing' => __('Installing...', 'kiss-smart-batch-installer'),
                 'installed' => __('Installed', 'kiss-smart-batch-installer'),
