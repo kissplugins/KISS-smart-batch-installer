@@ -417,10 +417,23 @@ class GitHubScraper
         }
 
         if ($cached_result !== false && !is_wp_error($cached_result)) {
+            // Ensure structure includes checked_at
+            if (is_array($cached_result)) {
+                $cached_result['checked_at'] = $cached_result['checked_at'] ?? (time() - 1);
+            }
             return $cached_result;
         }
 
         $plugin_data = $this->checkForPluginFile($repo_name);
+
+        // Attach checked_at timestamp
+        if (!is_wp_error($plugin_data)) {
+            if (is_array($plugin_data)) {
+                $plugin_data['checked_at'] = time();
+            } elseif ($plugin_data === false) {
+                $plugin_data = ['is_plugin' => false, 'checked_at' => time()];
+            }
+        }
 
         // Cache for 24 hours (only cache definitive results: array or false)
         if (!is_wp_error($plugin_data)) {
@@ -746,6 +759,78 @@ class GitHubScraper
         $wpdb->query($wpdb->prepare("DELETE FROM {$table} WHERE option_name LIKE %s OR option_name LIKE %s", $transient_key_like, $timeout_key_like));
 
         wp_send_json_success(['cleared' => true]);
+    }
+
+    /**
+     * Bulk check plugin detection for multiple repositories (AJAX + internal)
+     */
+    public function bulkCheckPlugins($repo_names)
+    {
+        if (!is_array($repo_names) || empty($repo_names)) {
+            return new \WP_Error('invalid_input', __('Invalid repository list.', 'kiss-smart-batch-installer'));
+        }
+
+        $results = [];
+        foreach ($repo_names as $repo) {
+            $repo = sanitize_text_field($repo);
+            if ($repo === '') { continue; }
+
+            $cache_key = 'kiss_sbi_plugin_check_' . sanitize_key($this->org_name . '_' . $repo);
+            $cached = get_transient($cache_key);
+            if ($cached !== false) {
+                $is_plugin = is_array($cached) ? ($cached['is_plugin'] ?? ($cached !== false)) : ($cached !== false);
+                $checked_at = is_array($cached) ? ($cached['checked_at'] ?? null) : null;
+                $results[$repo] = [
+                    'is_plugin' => $is_plugin,
+                    'plugin_data' => $cached,
+                    'cached' => true,
+                    'checked_at' => $checked_at,
+                ];
+                continue;
+            }
+
+            $plugin_data = $this->isWordPressPlugin($repo);
+            if (is_wp_error($plugin_data)) {
+                $results[$repo] = [
+                    'is_plugin' => false,
+                    'plugin_data' => [
+                        'message' => $plugin_data->get_error_message(),
+                        'code' => $plugin_data->get_error_code()
+                    ],
+                    'cached' => false,
+                    'checked_at' => null,
+                ];
+            } else {
+                $is_plugin = is_array($plugin_data) ? ($plugin_data['is_plugin'] ?? ($plugin_data !== false)) : ($plugin_data !== false);
+                $checked_at = is_array($plugin_data) ? ($plugin_data['checked_at'] ?? null) : null;
+                $results[$repo] = [
+                    'is_plugin' => $is_plugin,
+                    'plugin_data' => $plugin_data,
+                    'cached' => false,
+                    'checked_at' => $checked_at,
+                ];
+            }
+        }
+
+        return $results;
+    }
+
+    /**
+     * AJAX: bulk scan plugins
+     */
+    public function ajaxBulkScanPlugins()
+    {
+        check_ajax_referer('kiss_sbi_admin_nonce', 'nonce');
+        if (!current_user_can('install_plugins')) {
+            wp_die(__('Insufficient permissions.', 'kiss-smart-batch-installer'));
+        }
+
+        $repos = isset($_POST['repos']) ? (array) $_POST['repos'] : [];
+        $results = $this->bulkCheckPlugins($repos);
+        if (is_wp_error($results)) {
+            wp_send_json_error($results->get_error_message());
+        }
+        wp_send_json_success($results);
     }
 
     /**

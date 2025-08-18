@@ -34,6 +34,11 @@ jQuery(document).ready(function($) {
         $(document).on('click', '.kiss-sbi-install-single', installSinglePlugin);
         $(document).on('click', '.kiss-sbi-activate-plugin', activatePlugin);
         $(document).on('click', '.kiss-sbi-check-installed', checkInstalled);
+        // Manual: Check all visible rows
+        $('#kiss-sbi-check-visible').on('click', function() {
+            bulkCheckVisible();
+        });
+
     }
 
     // Optional: manual bulk checker could call this
@@ -50,9 +55,57 @@ jQuery(document).ready(function($) {
             pluginCheckQueue.push(this);
         });
 
+
+
         // Start processing queue
         processPluginCheckQueue();
     }
+
+        // Bulk check visible rows using new bulk endpoint with debouncing
+        let bulkVisibleTimer = null;
+        function bulkCheckVisible() {
+            if (bulkVisibleTimer) { clearTimeout(bulkVisibleTimer); }
+            bulkVisibleTimer = setTimeout(doBulkCheckVisible, 200);
+        }
+
+        function doBulkCheckVisible() {
+            const repos = [];
+            $('.kiss-sbi-check-plugin:visible').each(function() {
+                const r = $(this).data('repo');
+                if (r) repos.push(r);
+            });
+            if (repos.length === 0) return;
+
+            $.ajax({
+                url: kissSbiAjax.ajaxUrl,
+                type: 'POST',
+                data: { action: 'kiss_sbi_scan_plugins_bulk', nonce: kissSbiAjax.nonce, repos: repos },
+                success: function(resp) {
+                    if (resp && resp.success) {
+                        const results = resp.data || {};
+                        // Update rows
+                        for (const name in results) {
+                            const r = results[name];
+                            const $cell = $('tr[data-repo="' + name + '"]').find('.kiss-sbi-plugin-status');
+                            const $row = $('tr[data-repo="' + name + '"]');
+                            const cached = !!r.cached;
+                            if (r.is_plugin) {
+                                $cell.html('<span class="kiss-sbi-plugin-yes" title="' + (cached?'Cached':'Fresh') + '">✓ WordPress Plugin</span>')
+                                     .addClass('is-plugin');
+                                $row.find('.kiss-sbi-install-single').show().prop('disabled', false);
+                            } else {
+                                $cell.html('<span class="kiss-sbi-plugin-no" title="' + (cached?'Cached':'Fresh') + '">✗ Not a Plugin</span>')
+                                     .removeClass('is-plugin');
+                            }
+                        }
+                        updateCheckedPlugins();
+                        updateBatchInstallButton();
+                    }
+                },
+                error: function() {},
+            });
+        }
+
 
     function processPluginCheckQueue() {
         if (isProcessingQueue || pluginCheckQueue.length === 0) {
@@ -97,6 +150,8 @@ jQuery(document).ready(function($) {
         checkedPlugins.clear();
         $('.kiss-sbi-repo-checkbox:checked').each(function() {
             const repoName = $(this).val();
+
+
             const row = $(this).closest('tr');
             const isPlugin = row.find('.kiss-sbi-plugin-status').hasClass('is-plugin');
 

@@ -208,6 +208,14 @@ class AdminInterface
                             ));
                             ?>
                         </p>
+                        <?php if (!empty($result['cache']['fetched_at'])): ?>
+                            <p style="margin-top:4px;color:#646970;">
+                                <?php
+                                $age = human_time_diff((int)$result['cache']['fetched_at'], current_time('timestamp'));
+                                printf(__('Repo list cached %s ago.', 'kiss-smart-batch-installer'), esc_html($age));
+                                ?>
+                            </p>
+                        <?php endif; ?>
                     <?php endif; ?>
                 </div>
 
@@ -218,6 +226,10 @@ class AdminInterface
 
                     <button type="button" class="button" id="kiss-sbi-clear-cache">
                         <?php _e('Clear Cache', 'kiss-smart-batch-installer'); ?>
+                    </button>
+
+                    <button type="button" class="button" id="kiss-sbi-check-visible">
+                        <?php _e('Check All Visible', 'kiss-smart-batch-installer'); ?>
                     </button>
 
                     <a href="<?php echo esc_url(admin_url('admin.php?page=kiss-smart-batch-installer-settings')); ?>" class="button">
