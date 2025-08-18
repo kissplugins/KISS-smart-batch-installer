@@ -13,7 +13,7 @@ class GitHubScraper
     private $org_name;
     private $cache_duration;
     private $repo_limit;
-    
+
     public function __construct()
     {
         $this->org_name = get_option('kiss_sbi_github_org', '');
@@ -23,8 +23,9 @@ class GitHubScraper
         // AJAX handlers
         add_action('wp_ajax_kiss_sbi_refresh_repos', [$this, 'ajaxRefreshRepositories']);
         add_action('wp_ajax_kiss_sbi_scan_plugins', [$this, 'ajaxScanForPlugins']);
+        add_action('wp_ajax_kiss_sbi_clear_cache', [$this, 'ajaxClearCache']);
     }
-    
+
     /**
      * Get repositories from cache or scrape fresh data
      */
@@ -78,14 +79,14 @@ class GitHubScraper
             ]
         ];
     }
-    
+
     /**
      * Scrape GitHub organization repositories page
      */
     private function scrapeOrganizationRepos()
     {
         $url = sprintf('https://github.com/%s?tab=repositories', urlencode($this->org_name));
-        
+
         $response = wp_remote_get($url, [
             'timeout' => 30,
             'user-agent' => 'WordPress/' . get_bloginfo('version') . '; ' . home_url(),
@@ -93,7 +94,7 @@ class GitHubScraper
                 'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             ]
         ]);
-        
+
         if (is_wp_error($response)) {
             return new \WP_Error('request_failed', __('Failed to fetch GitHub page.', 'kiss-smart-batch-installer'));
         }
@@ -102,7 +103,7 @@ class GitHubScraper
         if ($response_code !== 200) {
             return new \WP_Error('invalid_response', sprintf(__('GitHub returned status code: %d', 'kiss-smart-batch-installer'), $response_code));
         }
-        
+
         $html = wp_remote_retrieve_body($response);
 
         // Try DOM parsing first
@@ -116,22 +117,22 @@ class GitHubScraper
 
         return $repositories;
     }
-    
+
     /**
      * Parse repositories from GitHub HTML
      */
     private function parseRepositoriesFromHtml($html)
     {
         $repositories = [];
-        
+
         // Use DOMDocument for robust HTML parsing
         $dom = new \DOMDocument();
         libxml_use_internal_errors(true);
         $dom->loadHTML($html);
         libxml_clear_errors();
-        
+
         $xpath = new \DOMXPath($dom);
-        
+
         // GitHub repository list items - updated selectors for current GitHub structure
         $selectors = [
             // New GitHub structure (2024)
@@ -153,7 +154,7 @@ class GitHubScraper
                 break;
             }
         }
-        
+
         if (!$repo_elements || $repo_elements->length === 0) {
             // Debug: Log some information about what we found
             error_log('KISS SBI Debug: No repository elements found');
@@ -175,7 +176,7 @@ class GitHubScraper
 
             return new \WP_Error('parse_failed', __('Could not find repositories in GitHub page.', 'kiss-smart-batch-installer'));
         }
-        
+
         $count = 0;
         $seen_repos = []; // Track seen repositories to prevent duplicates
 
@@ -381,7 +382,7 @@ class GitHubScraper
             'is_wordpress_plugin' => null // To be determined later
         ];
     }
-    
+
     /**
      * Check if repository contains a WordPress plugin
      */
@@ -397,24 +398,26 @@ class GitHubScraper
             $cached_result = false;
         }
 
-        if ($cached_result !== false) {
+        if ($cached_result !== false && !is_wp_error($cached_result)) {
             return $cached_result;
         }
 
         $plugin_data = $this->checkForPluginFile($repo_name);
 
-        // Cache for 24 hours
-        set_transient($cache_key, $plugin_data, DAY_IN_SECONDS);
+        // Cache for 24 hours (only cache definitive results: array or false)
+        if (!is_wp_error($plugin_data)) {
+            set_transient($cache_key, $plugin_data, DAY_IN_SECONDS);
+        }
 
         return $plugin_data;
     }
-    
+
     /**
      * Check repository for WordPress plugin files
      */
     private function checkForPluginFile($repo_name)
     {
-        // Common plugin file patterns
+        // Common plugin file patterns at the repo root
         $possible_files = [
             $repo_name . '.php',
             'index.php',
@@ -422,21 +425,45 @@ class GitHubScraper
             'plugin.php',
             'main.php'
         ];
-        
+
+        // Try common names first (fast path)
         foreach ($possible_files as $filename) {
-            $plugin_data = $this->fetchPluginHeader($repo_name, $filename);
+            $plugin_data = $this->fetchPluginHeader($repo_name, $filename, 'main');
+            if (is_wp_error($plugin_data)) {
+                return $plugin_data; // propagate rate limit or other errors
+            }
+            if ($plugin_data !== false) {
+                return $plugin_data;
+            }
+            // Try master as a fallback branch
+            $plugin_data = $this->fetchPluginHeader($repo_name, $filename, 'master');
+            if (is_wp_error($plugin_data)) {
+                return $plugin_data;
+            }
             if ($plugin_data !== false) {
                 return $plugin_data;
             }
         }
-        
+
+        // Fallback: list top-level PHP files via GitHub API and scan a few for headers
+        $plugin_data = $this->scanTopLevelPhpFiles($repo_name);
+        if ($plugin_data !== false) {
+            return $plugin_data;
+        }
+
+        // Fallback 2: scan one level of likely subdirectories for plugin main file
+        $plugin_data = $this->scanLikelySubdirectories($repo_name);
+        if ($plugin_data !== false) {
+            return $plugin_data;
+        }
+
         return false;
     }
-    
+
     /**
      * Fetch and parse WordPress plugin header
      */
-    private function fetchPluginHeader($repo_name, $filename)
+    private function fetchPluginHeader($repo_name, $filename, $branch = 'main')
     {
         // Only check PHP files for WordPress plugin headers
         if (!preg_match('/\.php$/i', $filename)) {
@@ -444,9 +471,10 @@ class GitHubScraper
         }
 
         $url = sprintf(
-            'https://raw.githubusercontent.com/%s/%s/main/%s',
+            'https://raw.githubusercontent.com/%s/%s/%s/%s',
             urlencode($this->org_name),
             urlencode($repo_name),
+            urlencode($branch),
             urlencode($filename)
         );
 
@@ -455,14 +483,22 @@ class GitHubScraper
             'user-agent' => 'WordPress/' . get_bloginfo('version') . '; ' . home_url(),
         ]);
 
-        if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+        if (is_wp_error($response)) {
+            return $response;
+        }
+        $code = wp_remote_retrieve_response_code($response);
+        if ($code === 429) {
+            return new \WP_Error('rate_limited', __('GitHub rate limit reached. Please try again later.', 'kiss-smart-batch-installer'));
+        }
+        if ($code !== 200) {
             return false;
         }
 
         $content = wp_remote_retrieve_body($response);
 
-        // Ensure this is actually a PHP file with proper opening tag
-        if (!preg_match('/^\s*<\?php/i', $content)) {
+        // Strip UTF-8 BOM if present and ensure PHP opening tag exists
+        $content_no_bom = preg_replace('/^\xEF\xBB\xBF/', '', $content);
+        if (!preg_match('/^\s*<\?php/i', $content_no_bom)) {
             return false;
         }
 
@@ -501,7 +537,149 @@ class GitHubScraper
 
         return false;
     }
-    
+
+    /**
+     * Fallback: list top-level PHP files and search for plugin headers
+     */
+    private function scanTopLevelPhpFiles($repo_name)
+    {
+        // Try both main and master default branches for raw browsing
+        $branches = ['main', 'master'];
+
+        // Prefer GitHub API contents endpoint to list files at repo root
+        // We avoid auth to keep it simple; public repos only
+        $apiUrl = sprintf('https://api.github.com/repos/%s/%s/contents', urlencode($this->org_name), urlencode($repo_name));
+        $response = wp_remote_get($apiUrl, [
+            'timeout' => 15,
+            'user-agent' => 'WordPress/' . get_bloginfo('version') . '; ' . home_url(),
+        ]);
+
+        $candidates = [];
+        if (!is_wp_error($response) && wp_remote_retrieve_response_code($response) === 200) {
+            $body = json_decode(wp_remote_retrieve_body($response), true);
+            if (is_array($body)) {
+                foreach ($body as $item) {
+                    if (isset($item['type'], $item['name']) && $item['type'] === 'file' && preg_match('/\.php$/i', $item['name'])) {
+                        $candidates[] = $item['name'];
+                    }
+                }
+            }
+        }
+
+        // If API listing failed, try a few obvious branch raw URLs of README to derive root listing is not possible.
+        // As a lightweight fallback, probe a few typical names quickly at both branches
+        if (empty($candidates)) {
+            $guess = ['index.php', $repo_name . '.php', 'plugin.php'];
+            foreach ($branches as $branch) {
+                foreach ($guess as $g) {
+                    // just attempt header fetch; fetchPluginHeader returns false fast on 404
+                    $data = $this->fetchPluginHeader($repo_name, $g, $branch);
+                    if ($data !== false && !is_wp_error($data)) {
+                        return $data;
+                    }
+                }
+            }
+            return false;
+        }
+
+        // Heuristics: prioritize filenames that contain repo slug or 'plugin'
+        usort($candidates, function($a, $b) use ($repo_name) {
+            $score = function($name) use ($repo_name) {
+                $s = 0;
+                if (stripos($name, $repo_name) !== false) $s += 2;
+                if (stripos($name, 'plugin') !== false) $s += 2;
+                if (strtolower($name) === 'index.php') $s += 1;
+                return -$s; // ascending sort uses negative score
+            };
+            return $score($a) <=> $score($b);
+        });
+
+        // Scan up to first 5 candidates for plugin headers, trying both branches
+        $limit = 0;
+        foreach ($candidates as $file) {
+            foreach ($branches as $branch) {
+                $data = $this->fetchPluginHeader($repo_name, $file, $branch);
+                if ($data !== false && !is_wp_error($data)) {
+                    return $data;
+                }
+            }
+            $limit++;
+            if ($limit >= 5) break;
+        }
+
+        return false;
+    }
+
+    /**
+     * Fallback 2: scan one level of likely subdirectories for plugin headers
+     */
+    private function scanLikelySubdirectories($repo_name)
+    {
+        $apiUrl = sprintf('https://api.github.com/repos/%s/%s/contents', urlencode($this->org_name), urlencode($repo_name));
+        $response = wp_remote_get($apiUrl, [
+            'timeout' => 15,
+            'user-agent' => 'WordPress/' . get_bloginfo('version') . '; ' . home_url(),
+        ]);
+        if (is_wp_error($response) || wp_remote_retrieve_response_code($response) !== 200) {
+            return false;
+        }
+        $root = json_decode(wp_remote_retrieve_body($response), true);
+        if (!is_array($root)) return false;
+
+        $dirs = [];
+        foreach ($root as $item) {
+            if (($item['type'] ?? '') === 'dir') {
+                $name = strtolower($item['name'] ?? '');
+                if (preg_match('/^(wp|wordpress|plugin|plugins|src|code|build)$/', $name)) continue; // skip unlikely
+                $dirs[] = $item['name'];
+            }
+        }
+        // Also try a directory that matches repo name
+        if (!in_array($repo_name, $dirs, true)) {
+            $dirs[] = $repo_name;
+        }
+
+        $branches = ['main', 'master'];
+        $candidates = ['index.php', $repo_name . '.php', 'plugin.php'];
+        foreach ($dirs as $dir) {
+            foreach ($branches as $branch) {
+                // Try candidate names first
+                foreach ($candidates as $g) {
+                    $path = trim($dir, '/') . '/' . $g;
+                    $data = $this->fetchPluginHeader($repo_name, $path, $branch);
+                    if ($data !== false && !is_wp_error($data)) {
+                        return $data;
+                    }
+                }
+                // If not found, list files in this dir via API and test PHP files
+                $dirApi = sprintf('https://api.github.com/repos/%s/%s/contents/%s', urlencode($this->org_name), urlencode($repo_name), rawurlencode($dir));
+                $r = wp_remote_get($dirApi, [
+                    'timeout' => 15,
+                    'user-agent' => 'WordPress/' . get_bloginfo('version') . '; ' . home_url(),
+                ]);
+                if (!is_wp_error($r) && wp_remote_retrieve_response_code($r) === 200) {
+                    $items = json_decode(wp_remote_retrieve_body($r), true);
+                    if (is_array($items)) {
+                        $checked = 0;
+                        foreach ($items as $it) {
+                            if (($it['type'] ?? '') === 'file' && preg_match('/\.php$/i', ($it['name'] ?? ''))) {
+                                $path = trim($dir, '/') . '/' . $it['name'];
+                                $data = $this->fetchPluginHeader($repo_name, $path, $branch);
+                                if ($data !== false && !is_wp_error($data)) {
+                                    return $data;
+                                }
+                                $checked++;
+                                if ($checked >= 5) break;
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        return false;
+    }
+
     /**
      * AJAX handler for refreshing repositories
      */
@@ -512,19 +690,45 @@ class GitHubScraper
         if (!current_user_can('install_plugins')) {
             wp_die(__('Insufficient permissions.', 'kiss-smart-batch-installer'));
         }
-        
+
         $repositories = $this->getRepositories(true);
-        
+
         if (is_wp_error($repositories)) {
             wp_send_json_error($repositories->get_error_message());
         }
-        
+
         wp_send_json_success([
             'repositories' => $repositories,
             'count' => count($repositories)
         ]);
     }
-    
+
+    /**
+     * AJAX handler to clear repository cache
+     */
+    public function ajaxClearCache()
+    {
+        check_ajax_referer('kiss_sbi_admin_nonce', 'nonce');
+
+        if (!current_user_can('install_plugins')) {
+            wp_die(__('Insufficient permissions.', 'kiss-smart-batch-installer'));
+        }
+
+        $cache_key = 'kiss_sbi_repositories_' . sanitize_key($this->org_name);
+        delete_transient($cache_key);
+
+        // Also clear plugin detection cache for this org
+        global $wpdb;
+        $like_org = sanitize_key($this->org_name) . '_';
+        $transient_key_like = $wpdb->esc_like('_transient_kiss_sbi_plugin_check_' . $like_org) . '%';
+        $timeout_key_like = $wpdb->esc_like('_transient_timeout_kiss_sbi_plugin_check_' . $like_org) . '%';
+        $table = $wpdb->options;
+        // Delete both value and timeout rows
+        $wpdb->query($wpdb->prepare("DELETE FROM {$table} WHERE option_name LIKE %s OR option_name LIKE %s", $transient_key_like, $timeout_key_like));
+
+        wp_send_json_success(['cleared' => true]);
+    }
+
     /**
      * AJAX handler for scanning plugins
      */
@@ -541,12 +745,22 @@ class GitHubScraper
         if (empty($repo_name)) {
             wp_send_json_error(__('Repository name is required.', 'kiss-smart-batch-installer'));
         }
-        
+
         $plugin_data = $this->isWordPressPlugin($repo_name);
-        
-        wp_send_json_success([
-            'is_plugin' => $plugin_data !== false,
-            'plugin_data' => $plugin_data
-        ]);
+
+        if (is_wp_error($plugin_data)) {
+            wp_send_json_success([
+                'is_plugin' => false,
+                'plugin_data' => [
+                    'message' => $plugin_data->get_error_message(),
+                    'code' => $plugin_data->get_error_code()
+                ]
+            ]);
+        } else {
+            wp_send_json_success([
+                'is_plugin' => $plugin_data !== false,
+                'plugin_data' => $plugin_data
+            ]);
+        }
     }
 }

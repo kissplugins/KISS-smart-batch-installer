@@ -5,6 +5,13 @@ jQuery(document).ready(function($) {
     let pluginCheckQueue = [];
     let isProcessingQueue = false;
 
+    // Debug helper
+    function dbg() {
+        if (typeof kissSbiAjax !== 'undefined' && kissSbiAjax && kissSbiAjax.debug) {
+            try { console.debug.apply(console, ['[KISS SBI]'].concat([].slice.call(arguments))); } catch (e) {}
+        }
+    }
+
     // Initialize
     init();
 
@@ -23,6 +30,7 @@ jQuery(document).ready(function($) {
 
         // Button events
         $('#kiss-sbi-refresh-repos').on('click', refreshRepositories);
+        $('#kiss-sbi-clear-cache').on('click', clearCache);
         $('#kiss-sbi-batch-install').on('click', batchInstallPlugins);
         $(document).on('click', '.kiss-sbi-check-plugin', checkPlugin);
         $(document).on('click', '.kiss-sbi-install-single', installSinglePlugin);
@@ -33,11 +41,13 @@ jQuery(document).ready(function($) {
     function queueAllPluginChecks() {
         // First check installation status for all repos
         $('.kiss-sbi-check-installed').each(function() {
+            dbg('Queue install status check for', $(this).data('repo'));
             checkInstalledStatus(this);
         });
 
         // Then add all check buttons to queue
         $('.kiss-sbi-check-plugin').each(function() {
+            dbg('Queue plugin check for', $(this).data('repo'));
             pluginCheckQueue.push(this);
         });
 
@@ -54,6 +64,7 @@ jQuery(document).ready(function($) {
         const button = pluginCheckQueue.shift();
 
         // Check this plugin
+        dbg('Processing check for', $(button).data('repo'));
         checkPluginQueued(button, function() {
             isProcessingQueue = false;
 
@@ -63,7 +74,7 @@ jQuery(document).ready(function($) {
             }, 250);
         });
     }
-    
+
     function toggleAllCheckboxes() {
         const isChecked = $(this).prop('checked');
         $('.kiss-sbi-repo-checkbox').prop('checked', isChecked);
@@ -82,7 +93,7 @@ jQuery(document).ready(function($) {
         $('#kiss-sbi-select-all').prop('checked', totalCheckboxes === checkedCheckboxes);
         $('#kiss-sbi-select-all').prop('indeterminate', checkedCheckboxes > 0 && checkedCheckboxes < totalCheckboxes);
     }
-    
+
     function updateCheckedPlugins() {
         checkedPlugins.clear();
         $('.kiss-sbi-repo-checkbox:checked').each(function() {
@@ -100,11 +111,12 @@ jQuery(document).ready(function($) {
         const hasValidSelection = checkedPlugins.size > 0;
         $('#kiss-sbi-batch-install').prop('disabled', !hasValidSelection);
     }
-    
+
     function refreshRepositories() {
         const $button = $('#kiss-sbi-refresh-repos');
         const originalText = $button.text();
 
+        dbg('Refresh Repositories clicked');
         $button.prop('disabled', true).text(kissSbiAjax.strings.loading || 'Loading...');
 
         $.ajax({
@@ -115,13 +127,15 @@ jQuery(document).ready(function($) {
                 nonce: kissSbiAjax.nonce
             },
             success: function(response) {
+                dbg('Refresh success', response);
                 if (response.success) {
                     location.reload();
                 } else {
                     showError('Failed to refresh repositories: ' + response.data);
                 }
             },
-            error: function() {
+            error: function(xhr) {
+                dbg('Refresh error', xhr);
                 showError('Ajax request failed.');
             },
             complete: function() {
@@ -129,7 +143,30 @@ jQuery(document).ready(function($) {
             }
         });
     }
-    
+
+    function clearCache() {
+        const $btn = $('#kiss-sbi-clear-cache');
+        const original = $btn.text();
+        dbg('Clear Cache clicked');
+        $btn.prop('disabled', true).text('Clearing...');
+        $.ajax({
+            url: kissSbiAjax.ajaxUrl,
+            type: 'POST',
+            data: { action: 'kiss_sbi_clear_cache', nonce: kissSbiAjax.nonce },
+            success: function(resp){
+                dbg('Clear Cache success', resp);
+                if (resp.success) {
+                    showSuccess('Cache cleared');
+                    location.reload();
+                } else {
+                    showError('Failed to clear cache: ' + resp.data);
+                }
+            },
+            error: function(xhr){ dbg('Clear Cache error', xhr); showError('Ajax request failed.'); },
+            complete: function(){ $btn.prop('disabled', false).text(original); }
+        });
+    }
+
     function checkPlugin() {
         // For manual clicks, add to queue if not already processing
         if (!isProcessingQueue) {
@@ -155,13 +192,14 @@ jQuery(document).ready(function($) {
                 repo_name: repoName
             },
             success: function(response) {
-                if (response.success) {
-                    if (response.data.is_plugin) {
+                dbg('Scan response', response);
+                if (response && response.success) {
+                    if (response.data && response.data.is_plugin) {
                         $statusCell.html('<span class="kiss-sbi-plugin-yes">✓ WordPress Plugin</span>')
                                   .addClass('is-plugin');
 
-                        // Enable install button
-                        $row.find('.kiss-sbi-install-single').prop('disabled', false);
+                        // Show and enable install button
+                        $row.find('.kiss-sbi-install-single').show().prop('disabled', false);
 
                         // Show plugin info if available
                         if (response.data.plugin_data && response.data.plugin_data.plugin_name) {
@@ -174,6 +212,11 @@ jQuery(document).ready(function($) {
                             $statusCell.find('span').attr('title', tooltip);
                         }
                     } else {
+                        // Not a plugin or undetected; include details if provided
+                        let detail = '';
+                        if (response.data && response.data.plugin_data && response.data.plugin_data.message) {
+                            detail = ' (' + response.data.plugin_data.message + ')';
+                        }
                         $statusCell.html('<span class="kiss-sbi-plugin-no">✗ Not a Plugin</span>')
                                   .removeClass('is-plugin');
                     }
@@ -181,7 +224,7 @@ jQuery(document).ready(function($) {
                     updateCheckedPlugins();
                     updateBatchInstallButton();
                 } else {
-                    $statusCell.html('<span class="kiss-sbi-plugin-error">Error checking</span>');
+                    $statusCell.html('<span class="kiss-sbi-plugin-error">Error checking</span>'); dbg('Scan failed', response);
                 }
 
                 // Call callback when done
@@ -199,7 +242,7 @@ jQuery(document).ready(function($) {
             }
         });
     }
-    
+
     function installSinglePlugin() {
         const $button = $(this);
         const repoName = $button.data('repo');
@@ -228,11 +271,12 @@ jQuery(document).ready(function($) {
                         showSuccess('Plugin "' + repoName + '" installed and activated successfully.');
                     } else {
                         // Show activate button
+                        // Replace install button with Activate →
                         $button.replaceWith(
                             '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' +
                             response.data.plugin_file + '" data-repo="' + repoName + '">Activate →</button>'
                         );
-                        showSuccess('Plugin "' + repoName + '" installed successfully. Click "Activate Now" to activate it.');
+                        showSuccess('Plugin "' + repoName + '" installed successfully. Click "Activate →" to activate it.');
                     }
                 } else {
                     $button.prop('disabled', false).text(originalText);
@@ -245,7 +289,7 @@ jQuery(document).ready(function($) {
             }
         });
     }
-    
+
     function batchInstallPlugins() {
         if (checkedPlugins.size === 0) {
             alert(kissSbiAjax.strings.noSelection);
@@ -278,11 +322,11 @@ jQuery(document).ready(function($) {
 
         // Disable batch install button
         $('#kiss-sbi-batch-install').prop('disabled', true);
-        
+
         // Install plugins sequentially
         installPluginsSequentially(repoNames, activate, 0);
     }
-    
+
     function installPluginsSequentially(repoNames, activate, index) {
         if (index >= repoNames.length) {
             // All done
@@ -340,26 +384,26 @@ jQuery(document).ready(function($) {
             }
         });
     }
-    
+
     function showSuccess(message) {
         showNotice(message, 'notice-success');
     }
-    
+
     function showError(message) {
         showNotice(message, 'notice-error');
     }
-    
+
     function showNotice(message, type) {
         const $notice = $('<div class="notice ' + type + ' is-dismissible"><p>' + message + '</p></div>');
         $('.wrap h1').after($notice);
-        
+
         // Auto-dismiss after 5 seconds
         setTimeout(function() {
             $notice.fadeOut(function() {
                 $(this).remove();
             });
         }, 5000);
-        
+
         // Handle dismiss button
         $notice.on('click', '.notice-dismiss', function() {
             $notice.fadeOut(function() {
