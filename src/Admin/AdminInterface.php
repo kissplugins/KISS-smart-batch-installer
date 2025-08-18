@@ -6,23 +6,23 @@ use KissSmartBatchInstaller\Core\GitHubScraper;
 
 /**
  * Admin Interface
- * 
+ *
  * Handles WordPress admin interface for the plugin.
  */
 class AdminInterface
 {
     private $github_scraper;
-    
+
     public function __construct()
     {
         $this->github_scraper = new GitHubScraper();
-        
+
         add_action('admin_menu', [$this, 'addAdminMenu']);
         add_action('admin_enqueue_scripts', [$this, 'enqueueAssets']);
         add_action('admin_init', [$this, 'registerSettings']);
         add_action('admin_notices', [$this, 'displayAdminNotices']);
     }
-    
+
     /**
      * Add admin menu pages
      */
@@ -44,8 +44,17 @@ class AdminInterface
             'kiss-smart-batch-installer-settings',
             [$this, 'renderSettingsPage']
         );
+
+        add_submenu_page(
+            'kiss-smart-batch-installer',
+            __('Self Tests', 'kiss-smart-batch-installer'),
+            __('Self Tests', 'kiss-smart-batch-installer'),
+            'manage_options',
+            'kiss-smart-batch-installer-tests',
+            [$this, 'renderSelfTestsPage']
+        );
     }
-    
+
     /**
      * Register plugin settings
      */
@@ -94,7 +103,7 @@ class AdminInterface
             'kiss_sbi_main_settings'
         );
     }
-    
+
     /**
      * Enqueue admin assets
      */
@@ -133,7 +142,7 @@ class AdminInterface
             ]
         ]);
     }
-    
+
     /**
      * Display admin notices
      */
@@ -154,7 +163,7 @@ class AdminInterface
             echo '</p></div>';
         }
     }
-    
+
     /**
      * Render main plugin page
      */
@@ -184,9 +193,20 @@ class AdminInterface
         ?>
         <div class="wrap">
             <h1><?php _e('KISS Smart Batch Installer', 'kiss-smart-batch-installer'); ?></h1>
-            
+
             <div class="kiss-sbi-header">
-                <p><?php printf(__('Showing repositories from: <strong>%s</strong>', 'kiss-smart-batch-installer'), esc_html($github_org)); ?></p>
+                <div>
+                    <p><?php printf(__('Showing repositories from: <strong>%s</strong>', 'kiss-smart-batch-installer'), esc_html($github_org)); ?></p>
+                    <p style="margin-top:6px;color:#646970;">
+                        <?php
+                        $repo_limit = (int) get_option('kiss_sbi_repo_limit', 15);
+                        echo wp_kses_post(sprintf(
+                            __('Heads up: the current selection on screen might be missing repos. Increase the limit in <a href="%s">Settings</a> if needed.', 'kiss-smart-batch-installer'),
+                            esc_url(admin_url('admin.php?page=kiss-smart-batch-installer-settings'))
+                        ));
+                        ?>
+                    </p>
+                </div>
 
                 <div class="kiss-sbi-actions">
                     <button type="button" class="button" id="kiss-sbi-refresh-repos">
@@ -197,12 +217,16 @@ class AdminInterface
                         <?php _e('Clear Cache', 'kiss-smart-batch-installer'); ?>
                     </button>
 
+                    <a href="<?php echo esc_url(admin_url('admin.php?page=kiss-smart-batch-installer-settings')); ?>" class="button">
+                        <?php _e('Settings', 'kiss-smart-batch-installer'); ?>
+                    </a>
+
                     <button type="button" class="button button-primary" id="kiss-sbi-batch-install" disabled>
                         <?php _e('Install Selected', 'kiss-smart-batch-installer'); ?>
                     </button>
                 </div>
             </div>
-            
+
             <?php if (is_wp_error($repositories)): ?>
                 <div class="notice notice-error">
                     <p><?php echo esc_html($repositories->get_error_message()); ?></p>
@@ -223,7 +247,7 @@ class AdminInterface
         </div>
         <?php
     }
-    
+
     /**
      * Render repositories table
      */
@@ -385,7 +409,7 @@ class AdminInterface
         </script>
         <?php
     }
-    
+
     /**
      * Render empty state
      */
@@ -408,7 +432,7 @@ class AdminInterface
         </div>
         <?php
     }
-    
+
     /**
      * Render settings page
      */
@@ -417,6 +441,12 @@ class AdminInterface
         ?>
         <div class="wrap">
             <h1><?php _e('KISS Smart Batch Installer Settings', 'kiss-smart-batch-installer'); ?></h1>
+
+            <p>
+                <a href="<?php echo esc_url(admin_url('admin.php?page=kiss-smart-batch-installer-tests')); ?>" class="button">
+                    <?php _e('Run Self Tests', 'kiss-smart-batch-installer'); ?>
+                </a>
+            </p>
 
             <form method="post" action="options.php">
                 <?php
@@ -445,7 +475,96 @@ class AdminInterface
         </div>
         <?php
     }
-    
+
+    /**
+     * Render Self Tests page
+     */
+    public function renderSelfTestsPage()
+    {
+        $results = [];
+
+        // 1) GitHub configuration/connectivity
+        $org = get_option('kiss_sbi_github_org', '');
+        $results['config'] = [
+            'label' => __('GitHub configuration', 'kiss-smart-batch-installer'),
+            'pass' => !empty($org),
+            'details' => empty($org) ? __('GitHub organization is not set.', 'kiss-smart-batch-installer') : sprintf(__('Org set to: %s', 'kiss-smart-batch-installer'), esc_html($org)),
+        ];
+
+        // 2) Repository fetch + pagination (dry-run, page 1 & 2 with per_page=5)
+        $paginationCheck = ['pass' => false, 'details' => ''];
+        if (!empty($org)) {
+            try {
+                $r1 = $this->github_scraper->getRepositories(true, 1, 5);
+                $r2 = $this->github_scraper->getRepositories(false, 2, 5);
+                if (!is_wp_error($r1) && !is_wp_error($r2)) {
+                    $page1 = wp_list_pluck($r1['repositories'], 'name');
+                    $page2 = wp_list_pluck($r2['repositories'], 'name');
+                    $total = (int) $r1['pagination']['total_items'];
+                    $pages = (int) $r1['pagination']['total_pages'];
+                    $paginationCheck['pass'] = $total >= 0 && $pages >= 1;
+                    $paginationCheck['details'] = sprintf(__('Total: %d, Pages: %d, Page1 count: %d, Page2 count: %d', 'kiss-smart-batch-installer'), $total, $pages, count($page1), count($page2));
+                } else {
+                    $err = is_wp_error($r1) ? $r1 : $r2;
+                    $paginationCheck['details'] = $err->get_error_message();
+                }
+            } catch (\Throwable $e) {
+                $paginationCheck['details'] = $e->getMessage();
+            }
+        } else {
+            $paginationCheck['details'] = __('Org not set; skipping.', 'kiss-smart-batch-installer');
+        }
+        $results['pagination'] = array_merge(['label' => __('Repository fetch + pagination', 'kiss-smart-batch-installer')], $paginationCheck);
+
+        // 3) Plugin detection spot-check (up to 5 repos)
+        $detectCheck = ['pass' => false, 'details' => ''];
+        if (!empty($org) && !is_wp_error($r1 ?? null)) {
+            $names = array_slice(wp_list_pluck($r1['repositories'], 'name'), 0, 5);
+            $counts = ['plugins' => 0, 'not_plugins' => 0];
+            foreach ($names as $n) {
+                $res = $this->github_scraper->isWordPressPlugin($n);
+                if (is_wp_error($res)) {
+                    $detectCheck['details'] = $res->get_error_message();
+                    break;
+                }
+                if (!empty($res['is_plugin'])) {
+                    $counts['plugins']++;
+                } else {
+                    $counts['not_plugins']++;
+                }
+            }
+            if (empty($detectCheck['details'])) {
+                $detectCheck['pass'] = true; // The check executed
+                $detectCheck['details'] = sprintf(__('Checked %d repos: %d plugins, %d not plugins', 'kiss-smart-batch-installer'), count($names), $counts['plugins'], $counts['not_plugins']);
+            }
+        } else if (empty($org)) {
+            $detectCheck['details'] = __('Org not set; skipping.', 'kiss-smart-batch-installer');
+        }
+        $results['detection'] = array_merge(['label' => __('Plugin detection', 'kiss-smart-batch-installer')], $detectCheck);
+
+        // 4) Install/Activate endpoints health (dry-run checks only)
+        $capPass = current_user_can('install_plugins');
+        $results['endpoints'] = [
+            'label' => __('Install/Activate endpoints (permissions)', 'kiss-smart-batch-installer'),
+            'pass' => (bool) $capPass,
+            'details' => $capPass ? __('Current user can install plugins.', 'kiss-smart-batch-installer') : __('Current user cannot install plugins.', 'kiss-smart-batch-installer'),
+        ];
+
+        // Render page
+        echo '<div class="wrap">';
+        echo '<h1>' . esc_html__('KISS Smart Batch Installer — Self Tests', 'kiss-smart-batch-installer') . '</h1>';
+        echo '<p>' . esc_html__('These tests help verify connectivity, pagination, detection and permissions. They are safe and do not install anything.', 'kiss-smart-batch-installer') . '</p>';
+
+        echo '<table class="widefat fixed striped"><thead><tr><th>' . esc_html__('Test', 'kiss-smart-batch-installer') . '</th><th>' . esc_html__('Result', 'kiss-smart-batch-installer') . '</th><th>' . esc_html__('Details', 'kiss-smart-batch-installer') . '</th></tr></thead><tbody>';
+        foreach ($results as $key => $r) {
+            $status = !empty($r['pass']) ? '<span style="color:#46b450;font-weight:600;">' . esc_html__('PASS', 'kiss-smart-batch-installer') . '</span>' : '<span style="color:#dc3232;font-weight:600;">' . esc_html__('FAIL', 'kiss-smart-batch-installer') . '</span>';
+            echo '<tr><td>' . esc_html($r['label']) . '</td><td>' . $status . '</td><td>' . wp_kses_post($r['details']) . '</td></tr>';
+        }
+        echo '</tbody></table>';
+        echo '<p><a href="' . esc_url(admin_url('plugins.php?page=kiss-smart-batch-installer')) . '" class="button">' . esc_html__('Back to Installer', 'kiss-smart-batch-installer') . '</a></p>';
+        echo '</div>';
+    }
+
     /**
      * Settings section callback
      */

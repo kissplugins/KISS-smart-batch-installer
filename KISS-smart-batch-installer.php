@@ -54,7 +54,7 @@ spl_autoload_register(function ($class) {
 class KissSmartBatchInstaller
 {
     private static $instance = null;
-    
+
     public static function getInstance()
     {
         if (self::$instance === null) {
@@ -62,28 +62,31 @@ class KissSmartBatchInstaller
         }
         return self::$instance;
     }
-    
+
     private function __construct()
     {
         $this->init();
     }
-    
+
     private function init()
     {
         // Initialize plugin
         add_action('plugins_loaded', [$this, 'loadTextDomain']);
         add_action('init', [$this, 'initializePlugin']);
-        
+
+        // Add action links (Settings | Installer) on the Plugins list row
+        add_filter('plugin_action_links_' . KISS_SBI_PLUGIN_BASENAME, [$this, 'pluginActionLinks']);
+
         // Activation/Deactivation hooks
         register_activation_hook(KISS_SBI_PLUGIN_FILE, [$this, 'activate']);
         register_deactivation_hook(KISS_SBI_PLUGIN_FILE, [$this, 'deactivate']);
     }
-    
+
     public function loadTextDomain()
     {
         load_plugin_textdomain('kiss-smart-batch-installer', false, dirname(KISS_SBI_PLUGIN_BASENAME) . '/languages');
     }
-    
+
     public function initializePlugin()
     {
         if (is_admin()) {
@@ -93,7 +96,7 @@ class KissSmartBatchInstaller
         new \KissSmartBatchInstaller\Core\GitHubScraper();
         new \KissSmartBatchInstaller\Core\PluginInstaller();
     }
-    
+
     public function activate()
     {
         // Set default options
@@ -110,6 +113,23 @@ class KissSmartBatchInstaller
         // Clean up transients
         delete_transient('kiss_sbi_repositories_cache');
         flush_rewrite_rules();
+    }
+
+    /**
+     * Add Settings and Installer links on the Plugins screen
+     */
+    public function pluginActionLinks($links)
+    {
+        $settings_url = admin_url('admin.php?page=kiss-smart-batch-installer-settings');
+        $installer_url = admin_url('plugins.php?page=kiss-smart-batch-installer');
+
+        $custom_links = [
+            '<a href="' . esc_url($settings_url) . '">' . esc_html__('Settings', 'kiss-smart-batch-installer') . '</a>',
+            '<a href="' . esc_url($installer_url) . '">' . esc_html__('Installer', 'kiss-smart-batch-installer') . '</a>'
+        ];
+
+        // Prepend our links so they appear first
+        return array_merge($custom_links, (array) $links);
     }
 }
 

@@ -198,8 +198,8 @@ jQuery(document).ready(function($) {
                         $statusCell.html('<span class="kiss-sbi-plugin-yes">✓ WordPress Plugin</span>')
                                   .addClass('is-plugin');
 
-                        // Enable install button
-                        $row.find('.kiss-sbi-install-single').prop('disabled', false);
+                        // Show and enable install button
+                        $row.find('.kiss-sbi-install-single').show().prop('disabled', false);
 
                         // Show plugin info if available
                         if (response.data.plugin_data && response.data.plugin_data.plugin_name) {
@@ -271,11 +271,12 @@ jQuery(document).ready(function($) {
                         showSuccess('Plugin "' + repoName + '" installed and activated successfully.');
                     } else {
                         // Show activate button
+                        // Replace install button with Activate →
                         $button.replaceWith(
                             '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' +
                             response.data.plugin_file + '" data-repo="' + repoName + '">Activate →</button>'
                         );
-                        showSuccess('Plugin "' + repoName + '" installed successfully. Click "Activate Now" to activate it.');
+                        showSuccess('Plugin "' + repoName + '" installed successfully. Click "Activate →" to activate it.');
                     }
                 } else {
                     $button.prop('disabled', false).text(originalText);
