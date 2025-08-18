@@ -192,6 +192,10 @@ class AdminInterface
                         <?php _e('Refresh Repositories', 'kiss-smart-batch-installer'); ?>
                     </button>
 
+                    <button type="button" class="button" id="kiss-sbi-clear-cache">
+                        <?php _e('Clear Cache', 'kiss-smart-batch-installer'); ?>
+                    </button>
+
                     <button type="button" class="button button-primary" id="kiss-sbi-batch-install" disabled>
                         <?php _e('Install Selected', 'kiss-smart-batch-installer'); ?>
                     </button>

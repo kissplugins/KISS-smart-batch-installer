@@ -23,6 +23,7 @@ jQuery(document).ready(function($) {
 
         // Button events
         $('#kiss-sbi-refresh-repos').on('click', refreshRepositories);
+        $('#kiss-sbi-clear-cache').on('click', clearCache);
         $('#kiss-sbi-batch-install').on('click', batchInstallPlugins);
         $(document).on('click', '.kiss-sbi-check-plugin', checkPlugin);
         $(document).on('click', '.kiss-sbi-install-single', installSinglePlugin);
@@ -63,7 +64,7 @@ jQuery(document).ready(function($) {
             }, 250);
         });
     }
-    
+
     function toggleAllCheckboxes() {
         const isChecked = $(this).prop('checked');
         $('.kiss-sbi-repo-checkbox').prop('checked', isChecked);
@@ -82,7 +83,7 @@ jQuery(document).ready(function($) {
         $('#kiss-sbi-select-all').prop('checked', totalCheckboxes === checkedCheckboxes);
         $('#kiss-sbi-select-all').prop('indeterminate', checkedCheckboxes > 0 && checkedCheckboxes < totalCheckboxes);
     }
-    
+
     function updateCheckedPlugins() {
         checkedPlugins.clear();
         $('.kiss-sbi-repo-checkbox:checked').each(function() {
@@ -100,7 +101,7 @@ jQuery(document).ready(function($) {
         const hasValidSelection = checkedPlugins.size > 0;
         $('#kiss-sbi-batch-install').prop('disabled', !hasValidSelection);
     }
-    
+
     function refreshRepositories() {
         const $button = $('#kiss-sbi-refresh-repos');
         const originalText = $button.text();
@@ -129,7 +130,34 @@ jQuery(document).ready(function($) {
             }
         });
     }
-    
+
+    function clearCache() {
+        const $btn = $('#kiss-sbi-clear-cache');
+        const original = $btn.text();
+        $btn.prop('disabled', true).text('Clearing...');
+        $.ajax({
+            url: kissSbiAjax.ajaxUrl,
+            type: 'POST',
+            data: { action: 'kiss_sbi_clear_cache', nonce: kissSbiAjax.nonce },
+            success: function(resp){
+                if (resp.success) {
+                    showSuccess('Cache cleared');
+                    location.reload();
+                } else {
+                    showError('Failed to clear cache: ' + resp.data);
+                }
+            },
+            error: function(){ showError('Ajax request failed.'); },
+            complete: function(){ $btn.prop('disabled', false).text(original); }
+        });
+    }
+
+            complete: function() {
+                $button.prop('disabled', false).text(originalText);
+            }
+        });
+    }
+
     function checkPlugin() {
         // For manual clicks, add to queue if not already processing
         if (!isProcessingQueue) {
@@ -199,7 +227,7 @@ jQuery(document).ready(function($) {
             }
         });
     }
-    
+
     function installSinglePlugin() {
         const $button = $(this);
         const repoName = $button.data('repo');
@@ -245,7 +273,7 @@ jQuery(document).ready(function($) {
             }
         });
     }
-    
+
     function batchInstallPlugins() {
         if (checkedPlugins.size === 0) {
             alert(kissSbiAjax.strings.noSelection);
@@ -278,11 +306,11 @@ jQuery(document).ready(function($) {
 
         // Disable batch install button
         $('#kiss-sbi-batch-install').prop('disabled', true);
-        
+
         // Install plugins sequentially
         installPluginsSequentially(repoNames, activate, 0);
     }
-    
+
     function installPluginsSequentially(repoNames, activate, index) {
         if (index >= repoNames.length) {
             // All done
@@ -340,26 +368,26 @@ jQuery(document).ready(function($) {
             }
         });
     }
-    
+
     function showSuccess(message) {
         showNotice(message, 'notice-success');
     }
-    
+
     function showError(message) {
         showNotice(message, 'notice-error');
     }
-    
+
     function showNotice(message, type) {
         const $notice = $('<div class="notice ' + type + ' is-dismissible"><p>' + message + '</p></div>');
         $('.wrap h1').after($notice);
-        
+
         // Auto-dismiss after 5 seconds
         setTimeout(function() {
             $notice.fadeOut(function() {
                 $(this).remove();
             });
         }, 5000);
-        
+
         // Handle dismiss button
         $notice.on('click', '.notice-dismiss', function() {
             $notice.fadeOut(function() {

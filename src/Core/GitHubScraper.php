@@ -13,7 +13,7 @@ class GitHubScraper
     private $org_name;
     private $cache_duration;
     private $repo_limit;
-    
+
     public function __construct()
     {
         $this->org_name = get_option('kiss_sbi_github_org', '');
@@ -23,8 +23,9 @@ class GitHubScraper
         // AJAX handlers
         add_action('wp_ajax_kiss_sbi_refresh_repos', [$this, 'ajaxRefreshRepositories']);
         add_action('wp_ajax_kiss_sbi_scan_plugins', [$this, 'ajaxScanForPlugins']);
+        add_action('wp_ajax_kiss_sbi_clear_cache', [$this, 'ajaxClearCache']);
     }
-    
+
     /**
      * Get repositories from cache or scrape fresh data
      */
@@ -78,14 +79,14 @@ class GitHubScraper
             ]
         ];
     }
-    
+
     /**
      * Scrape GitHub organization repositories page
      */
     private function scrapeOrganizationRepos()
     {
         $url = sprintf('https://github.com/%s?tab=repositories', urlencode($this->org_name));
-        
+
         $response = wp_remote_get($url, [
             'timeout' => 30,
             'user-agent' => 'WordPress/' . get_bloginfo('version') . '; ' . home_url(),
@@ -93,7 +94,7 @@ class GitHubScraper
                 'Accept' => 'text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8',
             ]
         ]);
-        
+
         if (is_wp_error($response)) {
             return new \WP_Error('request_failed', __('Failed to fetch GitHub page.', 'kiss-smart-batch-installer'));
         }
@@ -102,7 +103,7 @@ class GitHubScraper
         if ($response_code !== 200) {
             return new \WP_Error('invalid_response', sprintf(__('GitHub returned status code: %d', 'kiss-smart-batch-installer'), $response_code));
         }
-        
+
         $html = wp_remote_retrieve_body($response);
 
         // Try DOM parsing first
@@ -116,22 +117,22 @@ class GitHubScraper
 
         return $repositories;
     }
-    
+
     /**
      * Parse repositories from GitHub HTML
      */
     private function parseRepositoriesFromHtml($html)
     {
         $repositories = [];
-        
+
         // Use DOMDocument for robust HTML parsing
         $dom = new \DOMDocument();
         libxml_use_internal_errors(true);
         $dom->loadHTML($html);
         libxml_clear_errors();
-        
+
         $xpath = new \DOMXPath($dom);
-        
+
         // GitHub repository list items - updated selectors for current GitHub structure
         $selectors = [
             // New GitHub structure (2024)
@@ -153,7 +154,7 @@ class GitHubScraper
                 break;
             }
         }
-        
+
         if (!$repo_elements || $repo_elements->length === 0) {
             // Debug: Log some information about what we found
             error_log('KISS SBI Debug: No repository elements found');
@@ -175,7 +176,7 @@ class GitHubScraper
 
             return new \WP_Error('parse_failed', __('Could not find repositories in GitHub page.', 'kiss-smart-batch-installer'));
         }
-        
+
         $count = 0;
         $seen_repos = []; // Track seen repositories to prevent duplicates
 
@@ -381,7 +382,7 @@ class GitHubScraper
             'is_wordpress_plugin' => null // To be determined later
         ];
     }
-    
+
     /**
      * Check if repository contains a WordPress plugin
      */
@@ -408,7 +409,7 @@ class GitHubScraper
 
         return $plugin_data;
     }
-    
+
     /**
      * Check repository for WordPress plugin files
      */
@@ -422,17 +423,17 @@ class GitHubScraper
             'plugin.php',
             'main.php'
         ];
-        
+
         foreach ($possible_files as $filename) {
             $plugin_data = $this->fetchPluginHeader($repo_name, $filename);
             if ($plugin_data !== false) {
                 return $plugin_data;
             }
         }
-        
+
         return false;
     }
-    
+
     /**
      * Fetch and parse WordPress plugin header
      */
@@ -501,7 +502,7 @@ class GitHubScraper
 
         return false;
     }
-    
+
     /**
      * AJAX handler for refreshing repositories
      */
@@ -512,19 +513,36 @@ class GitHubScraper
         if (!current_user_can('install_plugins')) {
             wp_die(__('Insufficient permissions.', 'kiss-smart-batch-installer'));
         }
-        
+
         $repositories = $this->getRepositories(true);
-        
+
         if (is_wp_error($repositories)) {
             wp_send_json_error($repositories->get_error_message());
         }
-        
+
         wp_send_json_success([
             'repositories' => $repositories,
             'count' => count($repositories)
         ]);
     }
-    
+
+    /**
+     * AJAX handler to clear repository cache
+     */
+    public function ajaxClearCache()
+    {
+        check_ajax_referer('kiss_sbi_admin_nonce', 'nonce');
+
+        if (!current_user_can('install_plugins')) {
+            wp_die(__('Insufficient permissions.', 'kiss-smart-batch-installer'));
+        }
+
+        $cache_key = 'kiss_sbi_repositories_' . sanitize_key($this->org_name);
+        delete_transient($cache_key);
+
+        wp_send_json_success(['cleared' => true]);
+    }
+
     /**
      * AJAX handler for scanning plugins
      */
@@ -541,9 +559,9 @@ class GitHubScraper
         if (empty($repo_name)) {
             wp_send_json_error(__('Repository name is required.', 'kiss-smart-batch-installer'));
         }
-        
+
         $plugin_data = $this->isWordPressPlugin($repo_name);
-        
+
         wp_send_json_success([
             'is_plugin' => $plugin_data !== false,
             'plugin_data' => $plugin_data
