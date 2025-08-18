@@ -3,7 +3,7 @@
  * Plugin Name: KISS Smart Batch Installer
  * Plugin URI: https://github.com/your-org/github-org-repo-manager
  * Description: Manage and batch install WordPress plugins from your GitHub organization's most recently updated repositories.
- * Version: 1.0.1
+ * Version: 1.0.2
  * Author: KISS Plugins
  * Author URI: https://github.com/kissplugins?tab=repositories
  * License: GPL v2 or later

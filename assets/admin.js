@@ -192,8 +192,9 @@ jQuery(document).ready(function($) {
                 repo_name: repoName
             },
             success: function(response) {
-                if (response.success) {
-                    if (response.data.is_plugin) {
+                dbg('Scan response', response);
+                if (response && response.success) {
+                    if (response.data && response.data.is_plugin) {
                         $statusCell.html('<span class="kiss-sbi-plugin-yes">✓ WordPress Plugin</span>')
                                   .addClass('is-plugin');
 
@@ -211,6 +212,11 @@ jQuery(document).ready(function($) {
                             $statusCell.find('span').attr('title', tooltip);
                         }
                     } else {
+                        // Not a plugin or undetected; include details if provided
+                        let detail = '';
+                        if (response.data && response.data.plugin_data && response.data.plugin_data.message) {
+                            detail = ' (' + response.data.plugin_data.message + ')';
+                        }
                         $statusCell.html('<span class="kiss-sbi-plugin-no">✗ Not a Plugin</span>')
                                   .removeClass('is-plugin');
                     }
