@@ -102,7 +102,7 @@ class KissSmartBatchInstaller
         // Set default options
         add_option('kiss_sbi_github_org', '');
         add_option('kiss_sbi_cache_duration', 3600); // 1 hour
-        add_option('kiss_sbi_repo_limit', 15);
+        add_option('kiss_sbi_repo_limit', 50);
 
         // Create plugin tables if needed (none for v1.0)
         flush_rewrite_rules();

@@ -178,7 +178,7 @@ class AdminInterface
 
         // Handle pagination
         $current_page = max(1, (int) ($_GET['paged'] ?? 1));
-        $per_page = 15;
+        $per_page = (int) get_option('kiss_sbi_repo_limit', 50);
 
         $result = $this->github_scraper->getRepositories(false, $current_page, $per_page);
 
@@ -197,15 +197,18 @@ class AdminInterface
             <div class="kiss-sbi-header">
                 <div>
                     <p><?php printf(__('Showing repositories from: <strong>%s</strong>', 'kiss-smart-batch-installer'), esc_html($github_org)); ?></p>
-                    <p style="margin-top:6px;color:#646970;">
-                        <?php
-                        $repo_limit = (int) get_option('kiss_sbi_repo_limit', 15);
-                        echo wp_kses_post(sprintf(
-                            __('Heads up: the current selection on screen might be missing repos. Increase the limit in <a href="%s">Settings</a> if needed.', 'kiss-smart-batch-installer'),
-                            esc_url(admin_url('admin.php?page=kiss-smart-batch-installer-settings'))
-                        ));
-                        ?>
-                    </p>
+                    <?php if (!empty($pagination) && (int)$pagination['total_items'] > (int)$per_page): ?>
+                        <p style="margin-top:6px;color:#646970;">
+                            <?php
+                            echo wp_kses_post(sprintf(
+                                __('Showing Up to %1$s of %2$s — increase limit in <a href="%3$s">Settings</a>.', 'kiss-smart-batch-installer'),
+                                number_format_i18n((int)$per_page),
+                                number_format_i18n((int)$pagination['total_items']),
+                                esc_url(admin_url('admin.php?page=kiss-smart-batch-installer-settings'))
+                            ));
+                            ?>
+                        </p>
+                    <?php endif; ?>
                 </div>
 
                 <div class="kiss-sbi-actions">
@@ -588,9 +591,9 @@ class AdminInterface
      */
     public function repoLimitFieldCallback()
     {
-        $value = get_option('kiss_sbi_repo_limit', 15);
+        $value = get_option('kiss_sbi_repo_limit', 50);
         echo '<input type="number" name="kiss_sbi_repo_limit" value="' . esc_attr($value) . '" min="1" max="100" class="small-text">';
-        echo '<p class="description">' . __('Number of repositories to check (1-100).', 'kiss-smart-batch-installer') . '</p>';
+        echo '<p class="description">' . __('Number of repositories to check (1-100). Default is 50.', 'kiss-smart-batch-installer') . '</p>';
     }
 
     /**

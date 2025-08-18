@@ -18,7 +18,7 @@ class GitHubScraper
     {
         $this->org_name = get_option('kiss_sbi_github_org', '');
         $this->cache_duration = get_option('kiss_sbi_cache_duration', 3600);
-        $this->repo_limit = get_option('kiss_sbi_repo_limit', 15);
+        $this->repo_limit = get_option('kiss_sbi_repo_limit', 50);
 
         // AJAX handlers
         add_action('wp_ajax_kiss_sbi_refresh_repos', [$this, 'ajaxRefreshRepositories']);
