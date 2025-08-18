@@ -574,13 +574,41 @@ class GitHubScraper
                 foreach ($guess as $g) {
                     // just attempt header fetch; fetchPluginHeader returns false fast on 404
                     $data = $this->fetchPluginHeader($repo_name, $g, $branch);
-                    if ($data !== false) {
+                    if ($data !== false && !is_wp_error($data)) {
                         return $data;
                     }
                 }
             }
             return false;
         }
+
+        // Heuristics: prioritize filenames that contain repo slug or 'plugin'
+        usort($candidates, function($a, $b) use ($repo_name) {
+            $score = function($name) use ($repo_name) {
+                $s = 0;
+                if (stripos($name, $repo_name) !== false) $s += 2;
+                if (stripos($name, 'plugin') !== false) $s += 2;
+                if (strtolower($name) === 'index.php') $s += 1;
+                return -$s; // ascending sort uses negative score
+            };
+            return $score($a) <=> $score($b);
+        });
+
+        // Scan up to first 5 candidates for plugin headers, trying both branches
+        $limit = 0;
+        foreach ($candidates as $file) {
+            foreach ($branches as $branch) {
+                $data = $this->fetchPluginHeader($repo_name, $file, $branch);
+                if ($data !== false && !is_wp_error($data)) {
+                    return $data;
+                }
+            }
+            $limit++;
+            if ($limit >= 5) break;
+        }
+
+        return false;
+    }
 
     /**
      * Fallback 2: scan one level of likely subdirectories for plugin headers
@@ -647,42 +675,6 @@ class GitHubScraper
                     }
                 }
             }
-        }
-
-        return false;
-    }
-
-        // Heuristics: prioritize filenames that contain repo slug or 'plugin'
-        usort($candidates, function($a, $b) use ($repo_name) {
-            $score = function($name) use ($repo_name) {
-                $s = 0;
-                if (stripos($name, $repo_name) !== false) $s += 2;
-                if (stripos($name, 'plugin') !== false) $s += 2;
-                if (strtolower($name) === 'index.php') $s += 1;
-                return -$s; // ascending sort uses negative score
-            };
-            return $score($a) <=> $score($b);
-        });
-
-        // Scan up to first 5 candidates for plugin headers, trying both branches
-        $limit = 0;
-        foreach ($candidates as $file) {
-            foreach ($branches as $branch) {
-                $data = $this->fetchPluginHeader($repo_name, $file, $branch);
-                if ($data !== false) {
-                    return $data;
-                }
-            }
-            $limit++;
-            if ($limit >= 5) break;
-        }
-
-        return false;
-    }
-
-                'version' => sanitize_text_field($version),
-                'description' => sanitize_text_field($description)
-            ];
         }
 
         return false;
