@@ -23,6 +23,7 @@ class GitHubScraper
         // AJAX handlers
         add_action('wp_ajax_kiss_sbi_refresh_repos', [$this, 'ajaxRefreshRepositories']);
         add_action('wp_ajax_kiss_sbi_scan_plugins', [$this, 'ajaxScanForPlugins']);
+        add_action('wp_ajax_kiss_sbi_scan_plugins_bulk', [$this, 'ajaxBulkScanPlugins']);
         add_action('wp_ajax_kiss_sbi_clear_cache', [$this, 'ajaxClearCache']);
     }
 
@@ -39,25 +40,42 @@ class GitHubScraper
             $per_page = $this->repo_limit;
         }
 
-        $cache_key = 'kiss_sbi_repositories_' . sanitize_key($this->org_name);
+        $cache_key = 'kiss_sbi_repos_full_' . sanitize_key($this->org_name);
+        $cache_status = 'miss';
+        $fetched_at = null;
+        $all_repos = false;
 
         if (!$force_refresh) {
-            $cached_repos = get_transient($cache_key);
-            if ($cached_repos !== false) {
-                return $this->paginateRepositories($cached_repos, $page, $per_page);
+            $cached = get_transient($cache_key);
+            if ($cached !== false && is_array($cached) && isset($cached['repositories'])) {
+                $cache_status = 'hit';
+                $fetched_at = isset($cached['fetched_at']) ? (int) $cached['fetched_at'] : null;
+                $all_repos = $cached['repositories'];
             }
         }
 
-        $repositories = $this->scrapeOrganizationRepos();
+        if ($all_repos === false) {
+            $repositories = $this->scrapeOrganizationRepos();
+            if (is_wp_error($repositories)) {
+                return $repositories;
+            }
 
-        if (is_wp_error($repositories)) {
-            return $repositories;
+            $all_repos = $repositories;
+            $fetched_at = time();
+            set_transient($cache_key, [
+                'repositories' => $all_repos,
+                'fetched_at' => $fetched_at,
+                'total_count' => count($all_repos),
+                'source' => 'github'
+            ], $this->cache_duration);
         }
 
-        // Cache the results
-        set_transient($cache_key, $repositories, $this->cache_duration);
-
-        return $this->paginateRepositories($repositories, $page, $per_page);
+        $paged = $this->paginateRepositories($all_repos, $page, $per_page);
+        $paged['cache'] = [
+            'status' => $cache_status,
+            'fetched_at' => $fetched_at,
+        ];
+        return $paged;
     }
 
     /**
@@ -714,7 +732,8 @@ class GitHubScraper
             wp_die(__('Insufficient permissions.', 'kiss-smart-batch-installer'));
         }
 
-        $cache_key = 'kiss_sbi_repositories_' . sanitize_key($this->org_name);
+        // Clear full repo cache for this org
+        $cache_key = 'kiss_sbi_repos_full_' . sanitize_key($this->org_name);
         delete_transient($cache_key);
 
         // Also clear plugin detection cache for this org
@@ -741,7 +760,6 @@ class GitHubScraper
         }
 
         $repo_name = sanitize_text_field($_POST['repo_name'] ?? '');
-
         if (empty($repo_name)) {
             wp_send_json_error(__('Repository name is required.', 'kiss-smart-batch-installer'));
         }

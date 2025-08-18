@@ -18,9 +18,7 @@ jQuery(document).ready(function($) {
     function init() {
         bindEvents();
         updateBatchInstallButton();
-
-        // Queue all plugin checks instead of running them simultaneously
-        queueAllPluginChecks();
+        // Removed auto-check on load; user can trigger checks when needed
     }
 
     function bindEvents() {
@@ -38,15 +36,16 @@ jQuery(document).ready(function($) {
         $(document).on('click', '.kiss-sbi-check-installed', checkInstalled);
     }
 
+    // Optional: manual bulk checker could call this
     function queueAllPluginChecks() {
-        // First check installation status for all repos
-        $('.kiss-sbi-check-installed').each(function() {
+        // First check installation status for all visible repos only
+        $('.kiss-sbi-check-installed:visible').each(function() {
             dbg('Queue install status check for', $(this).data('repo'));
             checkInstalledStatus(this);
         });
 
-        // Then add all check buttons to queue
-        $('.kiss-sbi-check-plugin').each(function() {
+        // Then add visible check buttons to queue
+        $('.kiss-sbi-check-plugin:visible').each(function() {
             dbg('Queue plugin check for', $(this).data('repo'));
             pluginCheckQueue.push(this);
         });
@@ -194,8 +193,9 @@ jQuery(document).ready(function($) {
             success: function(response) {
                 dbg('Scan response', response);
                 if (response && response.success) {
+                    const cached = !!(response.data && response.data.cached);
                     if (response.data && response.data.is_plugin) {
-                        $statusCell.html('<span class="kiss-sbi-plugin-yes">✓ WordPress Plugin</span>')
+                        $statusCell.html('<span class="kiss-sbi-plugin-yes" title="' + (cached ? 'Cached' : 'Fresh') + '">✓ WordPress Plugin</span>')
                                   .addClass('is-plugin');
 
                         // Show and enable install button
@@ -205,7 +205,7 @@ jQuery(document).ready(function($) {
                         if (response.data.plugin_data && response.data.plugin_data.plugin_name) {
                             const pluginName = response.data.plugin_data.plugin_name;
                             const version = response.data.plugin_data.version;
-                            let tooltip = 'Plugin: ' + pluginName;
+                            let tooltip = 'Plugin: ' + pluginName + (cached ? ' [cached]' : '');
                             if (version) {
                                 tooltip += ' (v' + version + ')';
                             }
@@ -217,7 +217,7 @@ jQuery(document).ready(function($) {
                         if (response.data && response.data.plugin_data && response.data.plugin_data.message) {
                             detail = ' (' + response.data.plugin_data.message + ')';
                         }
-                        $statusCell.html('<span class="kiss-sbi-plugin-no">✗ Not a Plugin</span>')
+                        $statusCell.html('<span class="kiss-sbi-plugin-no" title="' + (cached ? 'Cached' : 'Fresh') + '">✗ Not a Plugin</span>')
                                   .removeClass('is-plugin');
                     }
 
