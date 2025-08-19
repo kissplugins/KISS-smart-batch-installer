@@ -113,10 +113,25 @@ class AdminInterface
             return;
         }
 
+        // Ensure plugin functions are available
+        if (!function_exists('is_plugin_active')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+        $has_pqs = function_exists('is_plugin_active') && is_plugin_active('plugin-quick-search/plugin-quick-search.php');
+
         wp_enqueue_script(
             'kiss-sbi-admin',
             KISS_SBI_PLUGIN_URL . 'assets/admin.js',
             ['jquery'],
+            KISS_SBI_VERSION,
+            true
+        );
+
+        // Enqueue PQS integration script after main admin script
+        wp_enqueue_script(
+            'kiss-sbi-pqs-integration',
+            KISS_SBI_PLUGIN_URL . 'assets/pqs-integration.js',
+            ['kiss-sbi-admin'],
             KISS_SBI_VERSION,
             true
         );
@@ -132,11 +147,13 @@ class AdminInterface
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('kiss_sbi_admin_nonce'),
             'debug' => (bool) apply_filters('kiss_sbi_debug', true),
+            'hasPQS' => (bool) $has_pqs,
             'strings' => [
                 'installing' => __('Installing...', 'kiss-smart-batch-installer'),
                 'installed' => __('Installed', 'kiss-smart-batch-installer'),
                 'error' => __('Error', 'kiss-smart-batch-installer'),
                 'scanning' => __('Scanning...', 'kiss-smart-batch-installer'),
+                'pqsCacheFound' => __('Using Plugin Quick Search cache...', 'kiss-smart-batch-installer'),
                 'confirmBatch' => __('Install selected plugins?', 'kiss-smart-batch-installer'),
                 'noSelection' => __('Please select at least one plugin.', 'kiss-smart-batch-installer')
             ]
@@ -331,6 +348,9 @@ class AdminInterface
                 <input type="checkbox" id="kiss-sbi-activate-after-install" value="1">
                 <?php _e('Activate plugins after installation', 'kiss-smart-batch-installer'); ?>
             </label>
+            <?php if (function_exists('is_plugin_active') && is_plugin_active('plugin-quick-search/plugin-quick-search.php')): ?>
+                <span class="kiss-sbi-pqs-notice"><?php _e('Using Plugin Quick Search cache for faster loading', 'kiss-smart-batch-installer'); ?></span>
+            <?php endif; ?>
         </p>
         <?php
     }
