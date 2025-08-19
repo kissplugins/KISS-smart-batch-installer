@@ -420,3 +420,27 @@
     font-size: 12px;
     margin-left: 10px;
 }
+
+/* Header cache indicator */
+.kiss-sbi-cache-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    background: #f1f1f1;
+    color: #555;
+}
+.kiss-sbi-cache-indicator.is-using {
+    background: #e6f4ea;
+    color: #1e7e34;
+}
+.kiss-sbi-cache-indicator.is-using::after {
+    content: '\2714'; /* ✓ */
+}
+.kiss-sbi-cache-indicator.is-not-using {
+    background: #fff3cd;
+    color: #856404;
+}
+

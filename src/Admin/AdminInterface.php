@@ -234,6 +234,10 @@ class AdminInterface
                         <?php _e('Clear Cache', 'kiss-smart-batch-installer'); ?>
                     </button>
 
+                    <span id="kiss-sbi-pqs-indicator" class="kiss-sbi-cache-indicator" title="<?php esc_attr_e('Shows whether Plugin Quick Search cache is being used', 'kiss-smart-batch-installer'); ?>">
+                        <?php _e('PQS: Checking…', 'kiss-smart-batch-installer'); ?>
+                    </span>
+
                     <a href="<?php echo esc_url(admin_url('admin.php?page=kiss-smart-batch-installer-settings')); ?>" class="button">
                         <?php _e('Settings', 'kiss-smart-batch-installer'); ?>
                     </a>
@@ -570,6 +574,24 @@ class AdminInterface
             'details' => $capPass ? __('Current user can install plugins.', 'kiss-smart-batch-installer') : __('Current user cannot install plugins.', 'kiss-smart-batch-installer'),
         ];
 
+        // 5) PQS cache presence (server-side)
+        if (!function_exists('is_plugin_active')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+        $hasPqs = function_exists('is_plugin_active') && is_plugin_active('plugin-quick-search/plugin-quick-search.php');
+        $results['pqs_found'] = [
+            'label' => __('PQS Cache plugin found', 'kiss-smart-batch-installer'),
+            'pass' => (bool) $hasPqs,
+            'details' => $hasPqs ? __('Plugin Quick Search is active.', 'kiss-smart-batch-installer') : __('Plugin Quick Search is not active.', 'kiss-smart-batch-installer'),
+        ];
+
+        // 6) PQS cache usage (client-side verification)
+        $results['pqs_used'] = [
+            'label' => __('PQS Cache used', 'kiss-smart-batch-installer'),
+            'pass' => false,
+            'details' => __('Will be verified in-browser using pqsCacheStatus().', 'kiss-smart-batch-installer'),
+        ];
+
         // Render page
         echo '<div class="wrap">';
         echo '<h1>' . esc_html__('KISS Smart Batch Installer — Self Tests', 'kiss-smart-batch-installer') . '</h1>';
@@ -578,10 +600,43 @@ class AdminInterface
         echo '<table class="widefat fixed striped"><thead><tr><th>' . esc_html__('Test', 'kiss-smart-batch-installer') . '</th><th>' . esc_html__('Result', 'kiss-smart-batch-installer') . '</th><th>' . esc_html__('Details', 'kiss-smart-batch-installer') . '</th></tr></thead><tbody>';
         foreach ($results as $key => $r) {
             $status = !empty($r['pass']) ? '<span style="color:#46b450;font-weight:600;">' . esc_html__('PASS', 'kiss-smart-batch-installer') . '</span>' : '<span style="color:#dc3232;font-weight:600;">' . esc_html__('FAIL', 'kiss-smart-batch-installer') . '</span>';
-            echo '<tr><td>' . esc_html($r['label']) . '</td><td>' . $status . '</td><td>' . wp_kses_post($r['details']) . '</td></tr>';
+            echo '<tr id="test-' . esc_attr($key) . '"><td>' . esc_html($r['label']) . '</td><td id="test-' . esc_attr($key) . '-result">' . $status . '</td><td id="test-' . esc_attr($key) . '-details">' . wp_kses_post($r['details']) . '</td></tr>';
         }
         echo '</tbody></table>';
         echo '<p><a href="' . esc_url(admin_url('plugins.php?page=kiss-smart-batch-installer')) . '" class="button">' . esc_html__('Back to Installer', 'kiss-smart-batch-installer') . '</a></p>';
+
+        // Inline script to evaluate PQS usage in the browser
+        ?>
+        <script>
+        (function(){
+            function setRow(pass, details){
+                var r = document.getElementById('test-pqs_used-result');
+                var d = document.getElementById('test-pqs_used-details');
+                if (!r || !d) return;
+                r.innerHTML = pass ? '<span style="color:#46b450;font-weight:600;">PASS</span>' : '<span style="color:#dc3232;font-weight:600;">FAIL</span>';
+                d.textContent = details;
+            }
+            function run(){
+                try{
+                    if (typeof window.pqsCacheStatus === 'function'){
+                        var status = window.pqsCacheStatus();
+                        var raw = localStorage.getItem('pqs_plugin_cache');
+                        var len = 0; try { var arr = JSON.parse(raw||'[]'); len = Array.isArray(arr)?arr.length:0; } catch(e) {}
+                        var used = (status === 'fresh');
+                        var detail = 'status=' + status + ', entries=' + len;
+                        setRow(!!used, detail);
+                    } else {
+                        setRow(false, 'pqsCacheStatus() not available.');
+                    }
+                }catch(e){
+                    setRow(false, 'Error: ' + (e && e.message ? e.message : e));
+                }
+            }
+            if (document.readyState === 'complete' || document.readyState === 'interactive') run();
+            else document.addEventListener('DOMContentLoaded', run);
+        })();
+        </script>
+        <?php
         echo '</div>';
     }
 

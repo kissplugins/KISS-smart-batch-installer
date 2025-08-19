@@ -1,11 +1,38 @@
 jQuery(document).ready(function($) {
+// Updates the on-screen PQS indicator in the header function bar
+function kissSbiUpdatePqsIndicator(state) {
+    try {
+        var el = document.getElementById('kiss-sbi-pqs-indicator');
+        if (!el) return;
+        if (state === 'using') {
+            el.classList.remove('is-not-using');
+            el.classList.add('is-using');
+            el.textContent = 'PQS: Using Cache ✓';
+        } else if (state === 'not-using') {
+            el.classList.remove('is-using');
+            el.classList.add('is-not-using');
+            el.textContent = 'PQS: Not Using Cache';
+        } else {
+            el.classList.remove('is-using', 'is-not-using');
+            el.textContent = 'PQS: Checking…';
+        }
+    } catch (e) {}
+}
+
     'use strict';
 
     // PQS Cache Integration
     const PQSCacheIntegration = {
         init: function() {
-            if (typeof kissSbiAjax !== 'undefined' && kissSbiAjax && kissSbiAjax.hasPQS && typeof window.pqsCacheStatus === 'function') {
-                this.integrateWithPQSCache();
+            if (typeof kissSbiAjax !== 'undefined' && kissSbiAjax && kissSbiAjax.hasPQS) {
+                kissSbiUpdatePqsIndicator('checking');
+                if (typeof window.pqsCacheStatus === 'function') {
+                    this.integrateWithPQSCache();
+                } else {
+                    kissSbiUpdatePqsIndicator('not-using');
+                }
+            } else {
+                kissSbiUpdatePqsIndicator('not-using');
             }
         },
 
@@ -15,15 +42,20 @@ jQuery(document).ready(function($) {
                 if (status === 'fresh') {
                     console.log('KISS SBI: PQS cache available, pre-scanning installed plugins');
                     this.scanInstalledPlugins();
+                    kissSbiUpdatePqsIndicator('using');
+                } else {
+                    kissSbiUpdatePqsIndicator('not-using');
                 }
 
                 // Listen for PQS cache updates
                 document.addEventListener('pqs-cache-rebuilt', () => {
                     console.log('KISS SBI: PQS cache rebuilt, rescanning installed plugins');
                     this.scanInstalledPlugins();
+                    kissSbiUpdatePqsIndicator('using');
                 });
             } catch (e) {
                 console.warn('KISS SBI: PQS cache status unavailable:', e);
+                kissSbiUpdatePqsIndicator('not-using');
             }
         },
 
@@ -54,6 +86,7 @@ jQuery(document).ready(function($) {
                 this.updateRepositoryTable(installedPlugins);
             } catch (error) {
                 console.warn('KISS SBI: Failed to read PQS cache:', error);
+                kissSbiUpdatePqsIndicator('not-using');
             }
         },
 
