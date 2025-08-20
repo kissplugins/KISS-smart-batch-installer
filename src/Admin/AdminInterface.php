@@ -623,6 +623,8 @@ class AdminInterface
         echo '<h1>' . esc_html__('KISS Smart Batch Installer — Self Tests', 'kiss-smart-batch-installer') . '</h1>';
         echo '<p>' . esc_html__('These tests help verify connectivity, pagination, detection and permissions. They are safe and do not install anything.', 'kiss-smart-batch-installer') . '</p>';
 
+        // Allow other plugins (e.g., PQS) to add self-test rows
+        $results = apply_filters('kiss_sbi_self_test_results', $results);
         echo '<table class="widefat fixed striped"><thead><tr><th>' . esc_html__('Test', 'kiss-smart-batch-installer') . '</th><th>' . esc_html__('Result', 'kiss-smart-batch-installer') . '</th><th>' . esc_html__('Details', 'kiss-smart-batch-installer') . '</th></tr></thead><tbody>';
         foreach ($results as $key => $r) {
             $status = !empty($r['pass']) ? '<span style="color:#46b450;font-weight:600;">' . esc_html__('PASS', 'kiss-smart-batch-installer') . '</span>' : '<span style="color:#dc3232;font-weight:600;">' . esc_html__('FAIL', 'kiss-smart-batch-installer') . '</span>';
@@ -630,6 +632,25 @@ class AdminInterface
         }
         echo '</tbody></table>';
         echo '<p><a href="' . esc_url(admin_url('plugins.php?page=kiss-smart-batch-installer')) . '" class="button">' . esc_html__('Back to Installer', 'kiss-smart-batch-installer') . '</a></p>';
+
+        // JS API for counter tests from other plugins
+        echo '<script>(function(){\n' .
+            'function addOrUpdateRow(key,label,pass,details){\n' .
+            '  var row=document.getElementById(\'test-\'+key);\n' .
+            '  var statusHtml=pass?\'<span style="color:#46b450;font-weight:600;">PASS</span>\':\'<span style="color:#dc3232;font-weight:600;">FAIL</span>\';\n' .
+            '  if(!row){\n' .
+            '    var tbody=document.querySelector(\'.widefat tbody\'); if(!tbody) return;\n' .
+            '    row=document.createElement(\'tr\'); row.id=\'test-\'+key;\n' .
+            '    row.innerHTML=\'<td>\'+label+\'</td><td id="test-\'+key+\'-result">\'+statusHtml+\'</td><td id="test-\'+key+\'-details"></td>\';\n' .
+            '    tbody.appendChild(row);\n' .
+            '  } else {\n' .
+            '    var res=document.getElementById(\'test-\'+key+\'-result\'); if(res) res.innerHTML=statusHtml;\n' .
+            '  }\n' .
+            '  var det=document.getElementById(\'test-\'+key+\'-details\'); if(det) det.textContent=details||\'\';\n' .
+            '}\n' .
+            'window.kissSbiSelfTests={addOrUpdateRow:addOrUpdateRow};\n' .
+            'document.dispatchEvent(new CustomEvent(\'kiss-sbi-self-tests-ready\',{detail:window.kissSbiSelfTests}));\n' .
+            '})();</script>';
 
         // Inline script to evaluate PQS usage in the browser
         ?>
