@@ -24,7 +24,7 @@ class PluginInstaller
     }
 
     /**
-     * Install a single plugin from GitHub
+     * Install a single plugin from GitHub using WordPress core Plugin_Upgrader
      */
     public function installPlugin($repo_name, $activate = false)
     {
@@ -32,34 +32,87 @@ class PluginInstaller
             return new \WP_Error('invalid_params', __('Invalid parameters provided.', 'kiss-smart-batch-installer'));
         }
 
-        // Check if plugin already exists
         $plugin_slug = sanitize_title($repo_name);
         $plugin_dir = WP_PLUGIN_DIR . '/' . $plugin_slug;
 
+        // Pre-check: prevent overwriting an existing directory
         if (is_dir($plugin_dir)) {
             return new \WP_Error('plugin_exists', sprintf(__('Plugin directory %s already exists.', 'kiss-smart-batch-installer'), $plugin_slug));
         }
 
-        // Download plugin
-        $download_result = $this->downloadPlugin($repo_name);
-        if (is_wp_error($download_result)) {
-            return $download_result;
+        // Build main branch ZIP URL
+        $zipUrl = sprintf('https://github.com/%s/%s/archive/refs/heads/main.zip', urlencode($this->org_name), urlencode($repo_name));
+
+        // Include upgrader classes
+        include_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+
+        $skin = new \WP_Ajax_Upgrader_Skin();
+        $upgrader = new \Plugin_Upgrader($skin);
+
+        // Ensure destination can be overwritten if needed and cleaned appropriately (we pre-checked above)
+        add_filter('upgrader_package_options', function($options){
+            $options['abort_if_destination_exists'] = false;
+            $options['clear_destination'] = false;
+            return $options;
+        });
+
+        // Rename the extracted GitHub directory (repo-main/) to the sanitized plugin slug
+        $renameFilter = function ($source, $remote_source, $upgrader_obj, $hook_extra) use ($plugin_slug) {
+            if (empty($source) || !is_dir($source)) return $source;
+            // Desired path inside plugins dir
+            $desired = trailingslashit(WP_PLUGIN_DIR) . $plugin_slug;
+            $desired = trailingslashit($desired);
+            $target = trailingslashit(dirname($source)) . basename($desired);
+            if ($source !== $target) {
+                // Remove target if exists (very unlikely as we pre-checked)
+                if (is_dir($target)) {
+                    // best-effort cleanup
+                    @rmdir($target);
+                }
+                @rename($source, $target);
+                return $target;
+            }
+            return $source;
+        };
+        add_filter('upgrader_source_selection', $renameFilter, 10, 4);
+
+        // Perform install
+        $result = $upgrader->install($zipUrl);
+
+        // Remove our temporary filter
+        remove_filter('upgrader_source_selection', $renameFilter, 10);
+
+        if (is_wp_error($result)) {
+            return $result;
+        }
+        if (!$result) {
+            return new \WP_Error('install_failed', __('Installation failed.', 'kiss-smart-batch-installer'));
         }
 
-        // Extract plugin
-        $extract_result = $this->extractPlugin($download_result['file'], $repo_name);
-        if (is_wp_error($extract_result)) {
-            // Clean up downloaded file
-            wp_delete_file($download_result['file']);
-            return $extract_result;
+        // Post-install: locate main plugin file
+        $plugin_file_rel = null;
+        $main_file = $this->findMainPluginFile($plugin_dir, $repo_name);
+        if ($main_file) {
+            $plugin_file_rel = $plugin_slug . '/' . $main_file;
+        } else {
+            // Fallback: try to find using get_plugins() by directory
+            if (!function_exists('get_plugins')) {
+                require_once ABSPATH . 'wp-admin/includes/plugin.php';
+            }
+            $all = function_exists('get_plugins') ? get_plugins() : [];
+            foreach ($all as $file => $data) {
+                $parts = explode('/', $file, 2);
+                if (strtolower($parts[0] ?? '') === strtolower($plugin_slug)) { $plugin_file_rel = $file; break; }
+            }
+            if (!$plugin_file_rel) {
+                // Could not find a valid main file
+                return new \WP_Error('no_plugin_file', __('Could not find main plugin file after installation.', 'kiss-smart-batch-installer'));
+            }
         }
-
-        // Clean up downloaded file
-        wp_delete_file($download_result['file']);
 
         // Activate if requested
         if ($activate) {
-            $activate_result = $this->activatePlugin($extract_result['plugin_file']);
+            $activate_result = $this->activatePlugin($plugin_file_rel);
             if (is_wp_error($activate_result)) {
                 return $activate_result;
             }
@@ -67,9 +120,9 @@ class PluginInstaller
 
         return [
             'success' => true,
-            'plugin_dir' => $extract_result['plugin_dir'],
-            'plugin_file' => $extract_result['plugin_file'],
-            'activated' => $activate
+            'plugin_dir' => $plugin_dir,
+            'plugin_file' => $plugin_file_rel,
+            'activated' => (bool) $activate
         ];
     }
 

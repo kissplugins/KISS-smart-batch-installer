@@ -189,7 +189,7 @@ The plugin currently uses a mix of custom file operations and WordPress core API
   - Self Tests page includes checks for NHK-plugin-framework (known non-plugin)
   - **Status:** COMPLETE
 
-- [ ] 🔥 **CRITICAL: Migrate GitHub install path to Plugin_Upgrader**
+- [x] 🔥 **CRITICAL: Migrate GitHub install path to Plugin_Upgrader**
   - **Current:** `Core/PluginInstaller->installPlugin()` uses custom download/extract logic
   - **Required:** Replace with `Plugin_Upgrader->install($zipUrl)` pattern from SelfUpdater
   - **Files to modify:** `src/Core/PluginInstaller.php`
