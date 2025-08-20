@@ -4,13 +4,13 @@ namespace KissSmartBatchInstaller\Core;
 
 /**
  * Plugin Installer
- * 
+ *
  * Handles downloading and installing WordPress plugins from GitHub repositories.
  */
 class PluginInstaller
 {
     private $org_name;
-    
+
     public function __construct()
     {
         $this->org_name = get_option('kiss_sbi_github_org', '');
@@ -20,8 +20,9 @@ class PluginInstaller
         add_action('wp_ajax_kiss_sbi_batch_install', [$this, 'ajaxBatchInstall']);
         add_action('wp_ajax_kiss_sbi_activate_plugin', [$this, 'ajaxActivatePlugin']);
         add_action('wp_ajax_kiss_sbi_check_installed', [$this, 'ajaxCheckInstalled']);
+        add_action('wp_ajax_kiss_sbi_refresh_repos', [$this, 'ajaxRefreshRepos']);
     }
-    
+
     /**
      * Install a single plugin from GitHub
      */
@@ -38,13 +39,13 @@ class PluginInstaller
         if (is_dir($plugin_dir)) {
             return new \WP_Error('plugin_exists', sprintf(__('Plugin directory %s already exists.', 'kiss-smart-batch-installer'), $plugin_slug));
         }
-        
+
         // Download plugin
         $download_result = $this->downloadPlugin($repo_name);
         if (is_wp_error($download_result)) {
             return $download_result;
         }
-        
+
         // Extract plugin
         $extract_result = $this->extractPlugin($download_result['file'], $repo_name);
         if (is_wp_error($extract_result)) {
@@ -52,10 +53,10 @@ class PluginInstaller
             wp_delete_file($download_result['file']);
             return $extract_result;
         }
-        
+
         // Clean up downloaded file
         wp_delete_file($download_result['file']);
-        
+
         // Activate if requested
         if ($activate) {
             $activate_result = $this->activatePlugin($extract_result['plugin_file']);
@@ -63,7 +64,7 @@ class PluginInstaller
                 return $activate_result;
             }
         }
-        
+
         return [
             'success' => true,
             'plugin_dir' => $extract_result['plugin_dir'],
@@ -71,7 +72,7 @@ class PluginInstaller
             'activated' => $activate
         ];
     }
-    
+
     /**
      * Download plugin ZIP from GitHub
      */
@@ -82,10 +83,10 @@ class PluginInstaller
             urlencode($this->org_name),
             urlencode($repo_name)
         );
-        
+
         // Create temporary file
         $temp_file = download_url($download_url, 300);
-        
+
         if (is_wp_error($temp_file)) {
             return new \WP_Error('download_failed', sprintf(__('Failed to download plugin: %s', 'kiss-smart-batch-installer'), $temp_file->get_error_message()));
         }
@@ -96,13 +97,13 @@ class PluginInstaller
             wp_delete_file($temp_file);
             return new \WP_Error('invalid_file', __('Downloaded file is not a ZIP archive.', 'kiss-smart-batch-installer'));
         }
-        
+
         return [
             'file' => $temp_file,
             'url' => $download_url
         ];
     }
-    
+
     /**
      * Extract plugin ZIP to plugins directory
      */
@@ -118,7 +119,7 @@ class PluginInstaller
         if ($result !== true) {
             return new \WP_Error('zip_open_failed', sprintf(__('Failed to open ZIP file. Error code: %s', 'kiss-smart-batch-installer'), $result));
         }
-        
+
         // GitHub archives have a folder structure like: repo-name-main/
         $root_folder = null;
         for ($i = 0; $i < $zip->numFiles; $i++) {
@@ -128,7 +129,7 @@ class PluginInstaller
                 break;
             }
         }
-        
+
         if (!$root_folder) {
             $zip->close();
             return new \WP_Error('invalid_archive', __('Invalid ZIP archive structure.', 'kiss-smart-batch-installer'));
@@ -142,28 +143,28 @@ class PluginInstaller
             $zip->close();
             return new \WP_Error('mkdir_failed', sprintf(__('Failed to create plugin directory: %s', 'kiss-smart-batch-installer'), $plugin_dir));
         }
-        
+
         // Extract files
         $extracted = false;
         for ($i = 0; $i < $zip->numFiles; $i++) {
             $filename = $zip->getNameIndex($i);
-            
+
             // Skip root folder and extract contents directly
             if (strpos($filename, $root_folder . '/') === 0) {
                 $relative_path = substr($filename, strlen($root_folder) + 1);
-                
+
                 if (empty($relative_path)) {
                     continue; // Skip the root folder itself
                 }
-                
+
                 $target_path = $plugin_dir . '/' . $relative_path;
-                
+
                 // Create directory if needed
                 if (substr($filename, -1) === '/') {
                     wp_mkdir_p($target_path);
                     continue;
                 }
-                
+
                 // Extract file
                 $file_content = $zip->getFromIndex($i);
                 if ($file_content !== false) {
@@ -171,16 +172,16 @@ class PluginInstaller
                     if (!is_dir($target_dir)) {
                         wp_mkdir_p($target_dir);
                     }
-                    
+
                     if (file_put_contents($target_path, $file_content) !== false) {
                         $extracted = true;
                     }
                 }
             }
         }
-        
+
         $zip->close();
-        
+
         if (!$extracted) {
             // Clean up on failure
             $this->removeDirectory($plugin_dir);
@@ -195,13 +196,13 @@ class PluginInstaller
             $this->removeDirectory($plugin_dir);
             return new \WP_Error('no_plugin_file', __('Could not find main plugin file.', 'kiss-smart-batch-installer'));
         }
-        
+
         return [
             'plugin_dir' => $plugin_dir,
             'plugin_file' => $plugin_slug . '/' . $plugin_file
         ];
     }
-    
+
     /**
      * Find the main plugin file in the extracted directory
      */
@@ -214,10 +215,10 @@ class PluginInstaller
             'plugin.php',
             'main.php'
         ];
-        
+
         foreach ($possible_files as $filename) {
             $file_path = $plugin_dir . '/' . $filename;
-            
+
             if (file_exists($file_path)) {
                 $file_content = file_get_contents($file_path);
 
@@ -233,10 +234,10 @@ class PluginInstaller
                 }
             }
         }
-        
+
         // Fallback: look for any PHP file with plugin header
         $iterator = new \RecursiveIteratorIterator(new \RecursiveDirectoryIterator($plugin_dir));
-        
+
         foreach ($iterator as $file) {
             if ($file->getExtension() === 'php') {
                 $file_content = file_get_contents($file->getPathname());
@@ -253,10 +254,10 @@ class PluginInstaller
                 }
             }
         }
-        
+
         return null;
     }
-    
+
     /**
      * Activate a plugin
      */
@@ -265,16 +266,16 @@ class PluginInstaller
         if (!function_exists('activate_plugin')) {
             require_once ABSPATH . 'wp-admin/includes/plugin.php';
         }
-        
+
         $result = activate_plugin($plugin_file);
-        
+
         if (is_wp_error($result)) {
             return new \WP_Error('activation_failed', sprintf(__('Failed to activate plugin: %s', 'kiss-smart-batch-installer'), $result->get_error_message()));
         }
-        
+
         return true;
     }
-    
+
     /**
      * Recursively remove a directory
      */
@@ -283,17 +284,17 @@ class PluginInstaller
         if (!is_dir($dir)) {
             return false;
         }
-        
+
         $files = array_diff(scandir($dir), ['.', '..']);
-        
+
         foreach ($files as $file) {
             $path = $dir . '/' . $file;
             is_dir($path) ? $this->removeDirectory($path) : unlink($path);
         }
-        
+
         return rmdir($dir);
     }
-    
+
     /**
      * AJAX handler for single plugin installation
      */
@@ -311,16 +312,16 @@ class PluginInstaller
         if (empty($repo_name)) {
             wp_send_json_error(__('Repository name is required.', 'kiss-smart-batch-installer'));
         }
-        
+
         $result = $this->installPlugin($repo_name, $activate);
-        
+
         if (is_wp_error($result)) {
             wp_send_json_error($result->get_error_message());
         }
-        
+
         wp_send_json_success($result);
     }
-    
+
     /**
      * AJAX handler for batch plugin installation
      */
@@ -338,15 +339,15 @@ class PluginInstaller
         if (!is_array($repo_names) || empty($repo_names)) {
             wp_send_json_error(__('No repositories selected.', 'kiss-smart-batch-installer'));
         }
-        
+
         $results = [];
         $success_count = 0;
         $error_count = 0;
-        
+
         foreach ($repo_names as $repo_name) {
             $repo_name = sanitize_text_field($repo_name);
             $result = $this->installPlugin($repo_name, $activate);
-            
+
             if (is_wp_error($result)) {
                 $results[] = [
                     'repo_name' => $repo_name,
@@ -363,7 +364,7 @@ class PluginInstaller
                 $success_count++;
             }
         }
-        
+
         wp_send_json_success([
             'results' => $results,
             'summary' => [
@@ -372,6 +373,20 @@ class PluginInstaller
                 'errors' => $error_count
             ]
         ]);
+
+	    /**
+	     * AJAX: Refresh repositories (clear cache and return success)
+	     */
+	    public function ajaxRefreshRepos()
+	    {
+	        check_ajax_referer('kiss_sbi_admin_nonce', 'nonce');
+	        if (!current_user_can('install_plugins')) {
+	            wp_die(__('Insufficient permissions.', 'kiss-smart-batch-installer'));
+	        }
+	        delete_transient('kiss_sbi_repositories_cache');
+	        wp_send_json_success(true);
+	    }
+
     }
 
     /**

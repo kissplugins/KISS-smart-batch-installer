@@ -208,6 +208,18 @@ class AdminInterface
             $pagination = $result['pagination'];
         }
 
+        // If org is kissplugins, move SBI repo to the top
+        if (!is_wp_error($repositories) && strtolower($github_org) === 'kissplugins') {
+            $top = [];
+            $rest = [];
+            foreach ($repositories as $r) {
+                if (strcasecmp($r['name'], 'KISS-Smart-Batch-Installer') === 0) $top[] = $r; else $rest[] = $r;
+            }
+            if (!empty($top)) {
+                $repositories = array_merge($top, $rest);
+            }
+        }
+
         ?>
         <div class="wrap">
             <h1><?php _e('KISS Smart Batch Installer', 'kiss-smart-batch-installer'); ?></h1>
@@ -314,6 +326,7 @@ class AdminInterface
             </thead>
             <tbody>
                 <?php foreach ($repositories as $repo): ?>
+                    <?php $is_sbi_repo = (strcasecmp($repo['name'], 'KISS-Smart-Batch-Installer') === 0); ?>
                     <tr data-repo="<?php echo esc_attr($repo['name']); ?>">
                         <th class="check-column">
                             <input type="checkbox" name="selected_repos[]" value="<?php echo esc_attr($repo['name']); ?>" class="kiss-sbi-repo-checkbox">
@@ -323,6 +336,9 @@ class AdminInterface
                                 <a href="<?php echo esc_url($repo['url']); ?>" target="_blank">
                                     <?php echo esc_html($repo['name']); ?>
                                 </a>
+                                <?php if ($is_sbi_repo): ?>
+                                    <span class="dashicons dashicons-yes" title="This plugin"></span>
+                                <?php endif; ?>
                             </strong>
                         </td>
                         <td><?php echo esc_html($repo['description']); ?></td>
@@ -335,17 +351,29 @@ class AdminInterface
                             ?>
                         </td>
                         <td class="kiss-sbi-plugin-status" data-repo="<?php echo esc_attr($repo['name']); ?>">
-                            <button type="button" class="button button-small kiss-sbi-check-plugin" data-repo="<?php echo esc_attr($repo['name']); ?>">
-                                <?php _e('Check', 'kiss-smart-batch-installer'); ?>
-                            </button>
+                            <?php if ($is_sbi_repo): ?>
+                                <span class="kiss-sbi-plugin-yes" title="WordPress Plugin">✓ WordPress Plugin</span>
+                            <?php else: ?>
+                                <button type="button" class="button button-small kiss-sbi-check-plugin" data-repo="<?php echo esc_attr($repo['name']); ?>">
+                                    <?php _e('Check', 'kiss-smart-batch-installer'); ?>
+                                </button>
+                            <?php endif; ?>
                         </td>
                         <td>
-                            <button type="button" class="button button-small kiss-sbi-check-installed" data-repo="<?php echo esc_attr($repo['name']); ?>">
-                                <?php _e('Check Status', 'kiss-smart-batch-installer'); ?>
-                            </button>
-                            <button type="button" class="button button-small kiss-sbi-install-single" data-repo="<?php echo esc_attr($repo['name']); ?>" disabled style="display: none;">
-                                <?php _e('Install', 'kiss-smart-batch-installer'); ?>
-                            </button>
+                            <?php if ($is_sbi_repo): ?>
+                                <span class="kiss-sbi-plugin-already-activated"><?php _e('Already Activated', 'kiss-smart-batch-installer'); ?></span>
+                                <button type="button" class="button button-primary kiss-sbi-self-update" data-repo="<?php echo esc_attr($repo['name']); ?>" style="margin-left:8px; display:none;">
+                                    <?php _e('Update', 'kiss-smart-batch-installer'); ?>
+                                </button>
+                                <span class="kiss-sbi-self-update-meta" style="margin-left:8px;color:#646970;"></span>
+                            <?php else: ?>
+                                <button type="button" class="button button-small kiss-sbi-check-installed" data-repo="<?php echo esc_attr($repo['name']); ?>">
+                                    <?php _e('Check Status', 'kiss-smart-batch-installer'); ?>
+                                </button>
+                                <button type="button" class="button button-small kiss-sbi-install-single" data-repo="<?php echo esc_attr($repo['name']); ?>" disabled style="display: none;">
+                                    <?php _e('Install', 'kiss-smart-batch-installer'); ?>
+                                </button>
+                            <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>

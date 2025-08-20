@@ -36,6 +36,59 @@ jQuery(document).ready(function($) {
         $(document).on('click', '.kiss-sbi-install-single', installSinglePlugin);
         $(document).on('click', '.kiss-sbi-activate-plugin', activatePlugin);
         $(document).on('click', '.kiss-sbi-check-installed', checkInstalled);
+        $(document).on('click', '.kiss-sbi-self-update', runSelfUpdate);
+        checkSelfUpdateAvailability();
+
+        function checkSelfUpdateAvailability() {
+            const $row = $('tr[data-repo="KISS-Smart-Batch-Installer"]');
+            if ($row.length === 0) return;
+            const $btn = $row.find('.kiss-sbi-self-update');
+            const $meta = $row.find('.kiss-sbi-self-update-meta');
+            $.post(kissSbiAjax.ajaxUrl, {
+                action: 'kiss_sbi_check_self_update',
+                nonce: kissSbiAjax.nonce
+            }, function(resp) {
+                if (!resp || !resp.success) return;
+                const data = resp.data || {};
+                if (data.error) {
+                    $meta.text('Update check failed: ' + data.error);
+                    return;
+                }
+                if (data.available) {
+                    $btn.show().text('Update to v' + data.remote);
+                    $meta.text('(Installed v' + data.installed + ')');
+                } else {
+                    $btn.hide();
+                    $meta.text('Up to date (v' + data.installed + ')');
+                }
+            });
+        }
+
+        function runSelfUpdate() {
+            const $btn = $(this);
+            const $row = $btn.closest('tr');
+            const $meta = $row.find('.kiss-sbi-self-update-meta');
+            if (!confirm('Update KISS Smart Batch Installer now?')) return;
+            const original = $btn.text();
+            $btn.prop('disabled', true).text('Updating...');
+            $.post(kissSbiAjax.ajaxUrl, {
+                action: 'kiss_sbi_run_self_update',
+                nonce: kissSbiAjax.nonce
+            }, function(resp) {
+                if (resp && resp.success) {
+                    $meta.text('Updated to v' + (resp.data && resp.data.installed ? resp.data.installed : 'latest'));
+                    location.reload();
+                } else {
+                    const msg = resp && resp.data ? resp.data : 'Unknown error';
+                    alert('Update failed: ' + msg);
+                    $btn.prop('disabled', false).text(original);
+                }
+            }).fail(function(){
+                alert('Update failed.');
+                $btn.prop('disabled', false).text(original);
+            });
+        }
+
     }
 
     function queueAllPluginChecks() {

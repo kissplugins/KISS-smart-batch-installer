@@ -95,6 +95,7 @@ class KissSmartBatchInstaller
 
         new \KissSmartBatchInstaller\Core\GitHubScraper();
         new \KissSmartBatchInstaller\Core\PluginInstaller();
+        new \KissSmartBatchInstaller\Core\SelfUpdater();
     }
 
     public function activate()
