@@ -174,6 +174,8 @@ Managing multiple WordPress plugins across different sites is time-consuming whe
 - Simple admin interface
 
 ### Phase 2 (Enhanced) - 2-3 weeks
+- Install Plugin updates for previosuly installed plugin from Repository
+- Switch between Main and Development branch versions
 - Advanced filtering and search
 - Batch installation improvements
 - Configuration enhancements

@@ -1,4 +1,4 @@
-# KISS Smart Batch Installer
+# KISS Smart Batch Installer (SBI)
 
 A WordPress plugin that allows you to manage and batch install WordPress plugins directly from your GitHub organization's most recently updated repositories.
 
@@ -8,7 +8,7 @@ A WordPress plugin that allows you to manage and batch install WordPress plugins
 - **WordPress Plugin Detection**: Automatically identifies which repositories contain WordPress plugins
 - **Batch Installation**: Install multiple plugins at once directly from GitHub
 - **Simple Configuration**: Just enter your GitHub organization name - no API tokens required
-- **Cache Management**: Configurable caching to improve performance and reduce GitHub requests
+- **Repository List Caching**: Configurable caching of the GitHub repository list (reduces GitHub requests). SBI does not include a built‑in plugin cache—use PQS.
 - **Plugin Activation**: Optional automatic activation after installation
 
 ## Installation
@@ -32,6 +32,25 @@ A WordPress plugin that allows you to manage and batch install WordPress plugins
 3. Select the plugins you want to install using checkboxes
 4. Optionally enable "Activate plugins after installation"
 5. Click "Install Selected" for batch installation, or "Install" for individual plugins
+
+
+## Using PQS Cache (Recommended)
+
+PQS (Plugin Quick Search) is a separate plugin that builds a fast, local cache of all installed plugins. KISS Smart Batch Installer can read this cache to speed up plugin detection and status checks.
+
+How to enable:
+1. Install and activate Plugin Quick Search: https://github.com/kissplugins/KISS-Plugin-Quick-Search
+2. In WordPress, go to Plugins → Plugin Quick Search and click "Rebuild PQS".
+3. Return to Plugins → GitHub Org Repos. The status pill should show "PQS: Using Cache". If it says "Not Using", open the Self Tests page to troubleshoot.
+
+Self Tests:
+- Go to Plugins → GitHub Org Repos → Self Tests.
+- You should see "PQS Cache plugin found" and "PQS Cache used" rows with details.
+
+Notes:
+- Read-only: SBI never writes to the PQS cache; it only reads from it.
+- Fallback: Even if the PQS script isn’t loaded on the main SBI screen, SBI can detect the cache via localStorage and will mark "Using" when entries exist.
+- No built‑in plugin cache: SBI no longer maintains its own plugin cache. Any reference to “cache” in this README refers to the GitHub repository scraping cache only.
 
 ## Requirements
 
