@@ -186,7 +186,33 @@ Checklist to migrate install/activate/update flows to WordPress core APIs where 
 - Error handling and UX
   - Surface WP_Ajax_Upgrader_Skin messages in UI; fall back to concise custom messages
 - Testing and rollback
-  - Add self-tests to exercise install/activate via Upgrader and verify detection remains correct
+  - Add/Update self-tests to exercise install/activate via Upgrader and verify detection remains correct
+
+
+#### Detailed checklist with progress
+
+- [x] Activation via WordPress core
+  - Using activate_plugin(), is_plugin_active(), is_plugin_active_for_network() in AJAX/install flows
+- [x] Self-update via core Upgrader
+  - Core/SelfUpdater uses Plugin_Upgrader + WP_Ajax_Upgrader_Skin and handles reactivation
+- [x] Non‑plugin regression self test in Self Tests page (e.g., NHK-plugin-framework)
+- [ ] Migrate GitHub install path to Plugin_Upgrader
+  - Replace custom download/extract (Core/PluginInstaller) with Plugin_Upgrader->install($zipUrl)
+  - If needed, mirror SelfUpdater’s upgrader_source_selection to normalize extracted directory
+- [ ] Prefer WP_Filesystem/Upgrader over manual file operations
+  - Audit for file_put_contents/unlink and replace with Upgrader/FS abstractions where still present
+- [ ] Post‑install validation after Upgrader install
+  - Use get_plugins() to identify the installed plugin’s main file; fallback to header scan only if necessary
+- [ ] UX: surface Upgrader errors in UI
+  - Capture WP_Ajax_Upgrader_Skin messages and display concise notices in the Installer page
+- [ ] Multisite: optional network activation
+  - Add a “Network Activate” control and honor network activation status checks
+- [ ] Rollback/safety behaviors
+  - Capture activation state before updates/installs; attempt automatic reactivation on failure; use clear_destination/abort_if_destination_exists appropriately
+- [ ] Documentation and developer notes
+  - Update README/ROADMAP to reflect Upgrader-based installs and operational caveats; include troubleshooting
+- [x] Security/permissions checks
+  - Nonces and capability checks in all AJAX endpoints (install/activate/refresh) verified
 
 ### Mitigation Strategies
 - Robust HTML parsing with fallbacks
