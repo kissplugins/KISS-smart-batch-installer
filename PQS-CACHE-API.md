@@ -1,4 +1,4 @@
-# Plugin Quick Search - Cache API Documentation
+# Plugin Quick Search (Separate plugin) - Cache API Documentation
 
 ## Overview
 
@@ -326,7 +326,8 @@ The plugin includes a comprehensive testing and diagnostic system accessible via
 - **Real-time cache status** with visual indicators (red/green dot)
 - **Comprehensive self-tests** covering cache, search algorithms, and system functionality
 - **Cache management tools** for clearing and rebuilding cache
-- **API documentation** and integration examples
+- **Integrated API documentation** within the cache overview section for easy reference
+- **Streamlined layout** with API information positioned alongside cache status for better workflow
 
 ### Self-Test Categories
 

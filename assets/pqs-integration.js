@@ -58,22 +58,36 @@ function kissSbiUpdatePqsIndicator(state) {
 
         integrateWithPQSCache: function() {
             try {
-                const status = window.pqsCacheStatus();
-                if (status === 'fresh') {
-                    console.log('KISS SBI: PQS cache available, pre-scanning installed plugins');
-                    this.scanInstalledPlugins();
-                    kissSbiUpdatePqsIndicator('using');
-                } else if (status === 'loading') {
-                    kissSbiUpdatePqsIndicator('loading');
-                } else if (status === 'stale') {
-                    // Show stale state and still scan to provide partial UX benefits
-                    console.log('KISS SBI: PQS cache is stale; scanning anyway for hints');
-                    this.scanInstalledPlugins();
-                    kissSbiUpdatePqsIndicator('stale');
-                } else if (status === 'error') {
-                    kissSbiUpdatePqsIndicator('not-using');
+                if (typeof window.pqsCacheStatus === 'function') {
+                    const status = window.pqsCacheStatus();
+                    if (status === 'fresh') {
+                        console.log('KISS SBI: PQS cache available, pre-scanning installed plugins');
+                        this.scanInstalledPlugins();
+                        kissSbiUpdatePqsIndicator('using');
+                    } else if (status === 'loading') {
+                        kissSbiUpdatePqsIndicator('loading');
+                    } else if (status === 'stale') {
+                        // Show stale state and still scan to provide partial UX benefits
+                        console.log('KISS SBI: PQS cache is stale; scanning anyway for hints');
+                        this.scanInstalledPlugins();
+                        kissSbiUpdatePqsIndicator('stale');
+                    } else if (status === 'error') {
+                        kissSbiUpdatePqsIndicator('not-using');
+                    } else {
+                        kissSbiUpdatePqsIndicator('not-using');
+                    }
                 } else {
-                    kissSbiUpdatePqsIndicator('not-using');
+                    // Fallback: detect via localStorage without PQS JS on the page
+                    const raw = localStorage.getItem('pqs_plugin_cache') || '[]';
+                    let arr = [];
+                    try { arr = JSON.parse(raw); } catch (_) {}
+                    if (Array.isArray(arr) && arr.length > 0) {
+                        console.log('KISS SBI: PQS cache detected via localStorage (no PQS JS on page)');
+                        this.scanInstalledPlugins();
+                        kissSbiUpdatePqsIndicator('using');
+                    } else {
+                        kissSbiUpdatePqsIndicator('not-using');
+                    }
                 }
 
                 // Listen for PQS cache updates
