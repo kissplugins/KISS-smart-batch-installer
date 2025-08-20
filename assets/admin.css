@@ -388,3 +388,70 @@
     padding-top: 10px;
     border-top: 1px solid #ddd;
 }
+
+/* PQS Integration styles */
+.kiss-sbi-plugin-status.is-installed {
+    background-color: #d4edda;
+    border-radius: 4px;
+    padding: 5px 10px;
+}
+
+.kiss-sbi-plugin-status.is-installed .kiss-sbi-plugin-yes {
+    color: #155724;
+    font-weight: 600;
+}
+
+.wp-list-table tbody tr.plugin-installed {
+    background-color: #f8f9fa;
+    opacity: 0.8;
+}
+
+.wp-list-table tbody tr.plugin-installed .kiss-sbi-repo-checkbox:disabled {
+    opacity: 0.5;
+    cursor: not-allowed;
+}
+
+.kiss-sbi-pqs-notice {
+    display: inline-block;
+    background: #e3f2fd;
+    color: #0277bd;
+    padding: 4px 8px;
+    border-radius: 3px;
+    font-size: 12px;
+    margin-left: 10px;
+}
+
+/* Header cache indicator */
+.kiss-sbi-cache-indicator {
+    display: inline-flex;
+    align-items: center;
+    gap: 6px;
+    font-size: 12px;
+    padding: 4px 8px;
+    border-radius: 3px;
+    background: #f1f1f1;
+    color: #555;
+}
+.kiss-sbi-cache-indicator.is-using {
+    background: #e6f4ea;
+    color: #1e7e34;
+}
+.kiss-sbi-cache-indicator.is-using::after {
+    content: '\2714'; /* ✓ */
+}
+.kiss-sbi-cache-indicator.is-not-using {
+    background: #fff3cd;
+    color: #856404;
+}
+
+.kiss-sbi-cache-indicator.is-loading {
+    background: #e7f1ff;
+    color: #1d4ed8;
+}
+.kiss-sbi-cache-indicator.stale,
+.kiss-sbi-cache-indicator.is-stale {
+    background: #fff8e1;
+    color: #8d6e00;
+}
+
+
