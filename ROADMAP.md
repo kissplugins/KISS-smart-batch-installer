@@ -139,6 +139,12 @@ Managing multiple WordPress plugins across different sites is time-consuming whe
 - No API authentication required
 - Simple backoff strategy if needed
 
+
+### Recently delivered (v1.1.0)
+- Self-updater for SBI via Plugin_Upgrader; updates from main branch ZIP
+- Pin SBI repo to top when org = kissplugins; show update CTA when newer exists
+- PQS integration docs and UI indicator improvements
+
 ## Future Enhancements
 
 ### Phase 2 Features
@@ -156,9 +162,31 @@ Managing multiple WordPress plugins across different sites is time-consuming whe
 ## Risk Assessment
 
 ### High Priority Risks
+- Make sure we are re-using only WP native/built-in functions for installing, activating and updating plugins.
 - GitHub HTML structure changes breaking scraper
 - Main branch instability compared to releases
 - Plugin conflicts during installation
+
+
+### Switching over to using WP's built in functions
+
+Checklist to migrate install/activate/update flows to WordPress core APIs where possible:
+
+- Use Plugin_Upgrader + WP_Ajax_Upgrader_Skin for installing ZIP packages from GitHub (main.zip)
+  - Benefits: filesystem credentials handling, standardized error reporting, destination cleanup
+  - Action: Replace custom download/extract logic in installer with Plugin_Upgrader->install($zipUrl)
+- Keep using activate_plugin()/is_plugin_active()/is_plugin_active_for_network() for activation checks and actions
+  - Already aligned with core; no changes needed
+- Prefer WP_Filesystem APIs and Upgrader flows over manual file_put_contents/unlink for file operations
+  - Ensures consistency across environments that require credentials
+- Keep SelfUpdater as the reference implementation for Upgrader usage
+  - We already use Plugin_Upgrader for SBI self-updates; mirror this in the GitHub install path
+- Preserve plugin header validation while relying on Upgrader for extraction
+  - After install, locate main plugin file and validate WordPress headers (fallback to get_plugins() scan)
+- Error handling and UX
+  - Surface WP_Ajax_Upgrader_Skin messages in UI; fall back to concise custom messages
+- Testing and rollback
+  - Add self-tests to exercise install/activate via Upgrader and verify detection remains correct
 
 ### Mitigation Strategies
 - Robust HTML parsing with fallbacks

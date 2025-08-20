@@ -374,6 +374,9 @@ class PluginInstaller
             ]
         ]);
 
+        }
+
+
 	    /**
 	     * AJAX: Refresh repositories (clear cache and return success)
 	     */
@@ -385,7 +388,7 @@ class PluginInstaller
 	        }
 	        delete_transient('kiss_sbi_repositories_cache');
 	        wp_send_json_success(true);
-	    }
+
 
     }
 

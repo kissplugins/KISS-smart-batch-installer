@@ -208,15 +208,35 @@ class AdminInterface
             $pagination = $result['pagination'];
         }
 
-        // If org is kissplugins, move SBI repo to the top
+        // If org is kissplugins, move SBI repo to the top and ensure PQS appears in the list
         if (!is_wp_error($repositories) && strtolower($github_org) === 'kissplugins') {
             $top = [];
             $rest = [];
+            $has_pqs = false;
             foreach ($repositories as $r) {
-                if (strcasecmp($r['name'], 'KISS-Smart-Batch-Installer') === 0) $top[] = $r; else $rest[] = $r;
+                if (strcasecmp($r['name'], 'KISS-Smart-Batch-Installer') === 0) {
+                    $top[] = $r;
+                } else {
+                    $rest[] = $r;
+                }
+                if (strcasecmp($r['name'], 'KISS-Plugin-Quick-Search') === 0) {
+                    $has_pqs = true;
+                }
             }
             if (!empty($top)) {
                 $repositories = array_merge($top, $rest);
+
+            }
+            // Pre-fill PQS if not present in the current page of results
+            if (!$has_pqs) {
+                $repositories[] = [
+                    'name' => 'KISS-Plugin-Quick-Search',
+                    'description' => __('Plugin Quick Search (helper for faster SBI detection)', 'kiss-smart-batch-installer'),
+                    'language' => 'PHP',
+                    'updated_at' => '',
+                    'url' => 'https://github.com/kissplugins/KISS-Plugin-Quick-Search',
+                    'is_wordpress_plugin' => null
+                ];
             }
         }
 
@@ -224,12 +244,17 @@ class AdminInterface
         <div class="wrap">
             <h1><?php _e('KISS Smart Batch Installer', 'kiss-smart-batch-installer'); ?></h1>
 
+
+            <div class="notice notice-warning" style="margin:12px 0;">
+                <p><strong>Important Notes:</strong> Installation of any plugins below are at your own risk. We do not run any security scans of any plugins. We rely on native/built-in WP functions to install or upgrade plugins from your specified repositories.</p>
+                <p>KISS Plugins does not offer any warranty or support for this software. Please review any plugins yourself before installation.</p>
+            </div>
+
             <div class="kiss-sbi-header">
                 <div>
                     <p><?php printf(__('Showing repositories from: <strong>%s</strong>', 'kiss-smart-batch-installer'), esc_html($github_org)); ?></p>
                     <p style="margin-top:6px;color:#646970;">
                         <?php
-                        $repo_limit = (int) get_option('kiss_sbi_repo_limit', 15);
                         echo wp_kses_post(sprintf(
                             __('Heads up: the current selection on screen might be missing repos. Increase the limit in <a href="%s">Settings</a> if needed.', 'kiss-smart-batch-installer'),
                             esc_url(admin_url('admin.php?page=kiss-smart-batch-installer-settings'))
@@ -573,7 +598,7 @@ class AdminInterface
         }
         $results['pagination'] = array_merge(['label' => __('Repository fetch + pagination', 'kiss-smart-batch-installer')], $paginationCheck);
 
-        // 3) Plugin detection spot-check (up to 5 repos)
+        // 3) Plugin detection: spot-check recent repos + assert non-plugins stay non-plugins
         $detectCheck = ['pass' => false, 'details' => ''];
         if (!empty($org) && !is_wp_error($r1 ?? null)) {
             $names = array_slice(wp_list_pluck($r1['repositories'], 'name'), 0, 5);
@@ -584,15 +609,29 @@ class AdminInterface
                     $detectCheck['details'] = $res->get_error_message();
                     break;
                 }
-                if (!empty($res['is_plugin'])) {
+                if ($res && !is_wp_error($res)) {
                     $counts['plugins']++;
                 } else {
                     $counts['not_plugins']++;
                 }
             }
+            // Assert known non-plugins are detected as non-plugins
+            $known_non_plugins = [];
+            if (strtolower($org) === 'kissplugins') {
+                $known_non_plugins[] = 'NHK-plugin-framework';
+            }
+            $failed_non_plugin = '';
+            foreach ($known_non_plugins as $np) {
+                $res = $this->github_scraper->isWordPressPlugin($np);
+                if (!is_wp_error($res) && !empty($res['is_plugin'])) {
+                    $failed_non_plugin = $np; break;
+                }
+            }
             if (empty($detectCheck['details'])) {
-                $detectCheck['pass'] = true; // The check executed
-                $detectCheck['details'] = sprintf(__('Checked %d repos: %d plugins, %d not plugins', 'kiss-smart-batch-installer'), count($names), $counts['plugins'], $counts['not_plugins']);
+                $detectCheck['pass'] = empty($failed_non_plugin);
+                $detectCheck['details'] = empty($failed_non_plugin)
+                    ? sprintf(__('Checked %d repos: %d plugins, %d not plugins. Non-plugin assertions passed.', 'kiss-smart-batch-installer'), count($names), $counts['plugins'], $counts['not_plugins'])
+                    : sprintf(__('Regression: %s should not be detected as a plugin.', 'kiss-smart-batch-installer'), $failed_non_plugin);
             }
         } else if (empty($org)) {
             $detectCheck['details'] = __('Org not set; skipping.', 'kiss-smart-batch-installer');
@@ -636,7 +675,7 @@ class AdminInterface
         $results['pqs_found'] = [
             'label' => __('PQS Cache plugin found', 'kiss-smart-batch-installer'),
             'pass' => (bool) $hasPqs,
-            'details' => $hasPqs ? __('Plugin Quick Search is active.', 'kiss-smart-batch-installer') : __('Plugin Quick Search is not active.', 'kiss-smart-batch-installer'),
+            'details' => $hasPqs ? __('Plugin Quick Search is active.', 'kiss-smart-batch-installer') : __('Plugin Quick Search is not active.', 'kiss-smart-batch-installer') . (strtolower($org) === 'kissplugins' ? ' — <button type="button" class="button button-small" id="kiss-sbi-install-pqs">' . esc_html__('Install PQS from main', 'kiss-smart-batch-installer') . '</button>' : ''),
         ];
 
         // 6) PQS cache usage (client-side verification)
@@ -675,6 +714,7 @@ class AdminInterface
             '    var res=document.getElementById(\'test-\'+key+\'-result\'); if(res) res.innerHTML=statusHtml;\n' .
             '  }\n' .
             '  var det=document.getElementById(\'test-\'+key+\'-details\'); if(det) det.textContent=details||\'\';\n' .
+
             '}\n' .
             'window.kissSbiSelfTests={addOrUpdateRow:addOrUpdateRow};\n' .
             'document.dispatchEvent(new CustomEvent(\'kiss-sbi-self-tests-ready\',{detail:window.kissSbiSelfTests}));\n' .
@@ -706,6 +746,38 @@ class AdminInterface
             if (document.readyState === 'complete' || document.readyState === 'interactive') run();
             else document.addEventListener('DOMContentLoaded', run);
         })();
+            // Handler to install PQS when not installed and org is kissplugins
+            (function(){
+                function onClick(){
+                    var btn = document.getElementById('kiss-sbi-install-pqs');
+                    if (!btn) return;
+                    btn.addEventListener('click', function(){
+                        if(!confirm('Install KISS Plugin Quick Search from main?')) return;
+                        var original = btn.textContent;
+                        btn.disabled = true; btn.textContent = 'Installing...';
+                        var xhr = new XMLHttpRequest();
+                        xhr.open('POST', ajaxurl, true);
+                        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
+                        xhr.onload = function(){
+                            try {
+                                var resp = JSON.parse(xhr.responseText||'{}');
+                                if (resp && resp.success) {
+                                    btn.outerHTML = '<span>Installed & Activated</span>';
+                                } else {
+                                    alert('Install failed: ' + (resp && resp.data ? resp.data : 'Unknown error'));
+                                    btn.disabled = false; btn.textContent = original;
+                                }
+                            } catch(e) {
+                                alert('Install failed.'); btn.disabled=false; btn.textContent=original;
+                            }
+                        };
+                        xhr.onerror = function(){ alert('Install failed.'); btn.disabled=false; btn.textContent=original; };
+                        xhr.send('action=kiss_sbi_install_plugin&nonce=<?php echo esc_js(wp_create_nonce('kiss_sbi_admin_nonce')); ?>&repo_name=' + encodeURIComponent('KISS-Plugin-Quick-Search') + '&activate=1');
+                    });
+                }
+                if (document.readyState === 'complete' || document.readyState === 'interactive') onClick(); else document.addEventListener('DOMContentLoaded', onClick);
+            })();
+
         </script>
         <?php
         echo '</div>';

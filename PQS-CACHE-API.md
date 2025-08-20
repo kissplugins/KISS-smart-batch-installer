@@ -4,6 +4,9 @@
 
 The Plugin Quick Search intelligent caching system provides a high-performance localStorage-based caching solution that other WordPress plugins can leverage. This document explains how to integrate with and extend the caching system.
 
+Note: KISS Smart Batch Installer (SBI) reads PQS cache in a read-only manner. SBI does not maintain its own plugin metadata cache; its only internal caching concerns the GitHub repository list.
+
+
 ## Cache Architecture
 
 ### Storage Location
@@ -102,9 +105,9 @@ function useExistingPQSCache() {
         try {
             const pluginData = JSON.parse(localStorage.getItem('pqs_plugin_cache') || '[]');
             const metadata = JSON.parse(localStorage.getItem('pqs_cache_meta') || '{}');
-            
+
             console.log(`Using ${pluginData.length} cached plugins from ${new Date(metadata.timestamp)}`);
-            
+
             // Use the cached plugin data for your purposes
             return pluginData;
         } catch (error) {
@@ -121,11 +124,11 @@ function useExistingPQSCache() {
 ```javascript
 function extendPQSCache() {
     const MY_CACHE_KEY = 'my_plugin_extended_cache';
-    
+
     // Get base PQS cache
     const baseCache = useExistingPQSCache();
     if (!baseCache) return null;
-    
+
     // Check if we have extended cache
     const extendedCache = localStorage.getItem(MY_CACHE_KEY);
     if (extendedCache) {
@@ -135,14 +138,14 @@ function extendPQSCache() {
             console.warn('Extended cache corrupted, rebuilding...');
         }
     }
-    
+
     // Build extended cache from base cache
     const enhanced = baseCache.map(plugin => ({
         ...plugin,
         myCustomField: calculateCustomData(plugin),
         myScore: calculateScore(plugin)
     }));
-    
+
     // Store extended cache
     try {
         localStorage.setItem(MY_CACHE_KEY, JSON.stringify(enhanced));
@@ -163,7 +166,7 @@ function setupCacheCoordination() {
         console.log('PQS cache rebuilt, clearing my extended cache');
         localStorage.removeItem('my_plugin_extended_cache');
     });
-    
+
     // Listen for cache status changes
     document.addEventListener('pqs-cache-status-changed', function(event) {
         const status = event.detail.status;
@@ -186,21 +189,21 @@ function setupCacheCoordination() {
 ```javascript
 function validateMyCache(baseTimestamp) {
     const MY_CACHE_META = 'my_cache_meta';
-    
+
     try {
         const myMeta = JSON.parse(localStorage.getItem(MY_CACHE_META) || '{}');
-        
+
         // Invalidate if older than base cache
         if (myMeta.baseTimestamp !== baseTimestamp) {
             return false;
         }
-        
+
         // Invalidate if older than 30 minutes
         const age = Date.now() - myMeta.timestamp;
         if (age > 30 * 60 * 1000) {
             return false;
         }
-        
+
         return true;
     } catch (error) {
         return false;
@@ -220,7 +223,7 @@ function robustCacheAccess() {
     } catch (error) {
         console.warn('Cache access failed:', error);
     }
-    
+
     // Fallback to fresh data collection
     return collectFreshData();
 }
@@ -266,24 +269,24 @@ class MyPluginCacheManager {
         this.cacheKey = 'my_plugin_cache';
         this.setupEventListeners();
     }
-    
+
     setupEventListeners() {
         document.addEventListener('pqs-cache-rebuilt', () => {
             this.invalidateCache();
         });
     }
-    
+
     async getData() {
         // Try cache first
         const cached = this.getCachedData();
         if (cached) return cached;
-        
+
         // Fallback to fresh data
         const fresh = await this.collectFreshData();
         this.setCachedData(fresh);
         return fresh;
     }
-    
+
     getCachedData() {
         if (window.pqsCacheStatus && window.pqsCacheStatus() === 'fresh') {
             try {
@@ -295,7 +298,7 @@ class MyPluginCacheManager {
         }
         return null;
     }
-    
+
     setCachedData(data) {
         try {
             localStorage.setItem(this.cacheKey, JSON.stringify(data));
@@ -303,11 +306,11 @@ class MyPluginCacheManager {
             console.warn('Cache write failed:', error);
         }
     }
-    
+
     invalidateCache() {
         localStorage.removeItem(this.cacheKey);
     }
-    
+
     async collectFreshData() {
         // Your fresh data collection logic here
         return [];

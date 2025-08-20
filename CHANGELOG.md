@@ -2,6 +2,17 @@
 
 All notable changes to this project will be documented in this file.
 
+
+## [1.1.0] - 2025-08-20
+### Added
+- Self-updater for SBI using WordPress Plugin_Upgrader (downloads main.zip and overwrites safely)
+- Pin SBI repo to the top of the list when org = kissplugins
+- Admin UI: SBI row always shows ✓ WordPress Plugin and Already Activated; shows Update button when newer version exists
+- PQS documentation section in README and clarification that SBI has no built-in plugin metadata cache (only repository list caching)
+
+### Fixed
+- Minor admin JS robustness around status checks
+
 ## [1.0.1] - 2025-08-17
 ### Added
 - Status UI updates:
