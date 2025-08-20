@@ -46,6 +46,18 @@ class PluginInstaller
         // Include upgrader classes
         include_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
 
+        // Capture detailed upgrader messages
+        $messages = [];
+        add_action('upgrader_process_complete', function($upg, $hook_extra) use (&$messages) {
+            $messages[] = 'Upgrader complete: ' . (is_array($hook_extra) ? json_encode($hook_extra) : (string) $hook_extra);
+        }, 10, 2);
+        add_action('upgrader_source_selection', function($source) use (&$messages) {
+            $messages[] = 'Source selected: ' . (string) $source; return $source;
+        }, 9, 1);
+        add_action('upgrader_post_install', function($true, $hook_extra, $result) use (&$messages) {
+            $messages[] = 'Post-install: ' . json_encode(['result' => $result, 'extra' => $hook_extra]); return $true;
+        }, 10, 3);
+
         $skin = new \WP_Ajax_Upgrader_Skin();
         $upgrader = new \Plugin_Upgrader($skin);
 
@@ -83,10 +95,10 @@ class PluginInstaller
         remove_filter('upgrader_source_selection', $renameFilter, 10);
 
         if (is_wp_error($result)) {
-            return $result;
+            return new \WP_Error($result->get_error_code() ?: 'install_failed', $result->get_error_message() . (!empty($messages) ? ' | Logs: ' . implode(' • ', array_map('sanitize_text_field', $messages)) : ''));
         }
         if (!$result) {
-            return new \WP_Error('install_failed', __('Installation failed.', 'kiss-smart-batch-installer'));
+            return new \WP_Error('install_failed', __('Installation failed.', 'kiss-smart-batch-installer') . (!empty($messages) ? ' | Logs: ' . implode(' • ', array_map('sanitize_text_field', $messages)) : ''));
         }
 
         // Post-install: locate main plugin file
@@ -122,139 +134,12 @@ class PluginInstaller
             'success' => true,
             'plugin_dir' => $plugin_dir,
             'plugin_file' => $plugin_file_rel,
-            'activated' => (bool) $activate
+            'activated' => (bool) $activate,
+            'logs' => $messages,
         ];
     }
 
-    /**
-     * Download plugin ZIP from GitHub
-     */
-    private function downloadPlugin($repo_name)
-    {
-        $download_url = sprintf(
-            'https://github.com/%s/%s/archive/refs/heads/main.zip',
-            urlencode($this->org_name),
-            urlencode($repo_name)
-        );
-
-        // Create temporary file
-        $temp_file = download_url($download_url, 300);
-
-        if (is_wp_error($temp_file)) {
-            return new \WP_Error('download_failed', sprintf(__('Failed to download plugin: %s', 'kiss-smart-batch-installer'), $temp_file->get_error_message()));
-        }
-
-        // Verify it's a ZIP file
-        $file_type = wp_check_filetype($temp_file);
-        if ($file_type['ext'] !== 'zip') {
-            wp_delete_file($temp_file);
-            return new \WP_Error('invalid_file', __('Downloaded file is not a ZIP archive.', 'kiss-smart-batch-installer'));
-        }
-
-        return [
-            'file' => $temp_file,
-            'url' => $download_url
-        ];
-    }
-
-    /**
-     * Extract plugin ZIP to plugins directory
-     */
-    private function extractPlugin($zip_file, $repo_name)
-    {
-        if (!class_exists('ZipArchive')) {
-            return new \WP_Error('no_zip_support', __('PHP ZipArchive class is not available.', 'kiss-smart-batch-installer'));
-        }
-
-        $zip = new \ZipArchive();
-        $result = $zip->open($zip_file);
-
-        if ($result !== true) {
-            return new \WP_Error('zip_open_failed', sprintf(__('Failed to open ZIP file. Error code: %s', 'kiss-smart-batch-installer'), $result));
-        }
-
-        // GitHub archives have a folder structure like: repo-name-main/
-        $root_folder = null;
-        for ($i = 0; $i < $zip->numFiles; $i++) {
-            $filename = $zip->getNameIndex($i);
-            if (strpos($filename, '/') !== false) {
-                $root_folder = substr($filename, 0, strpos($filename, '/'));
-                break;
-            }
-        }
-
-        if (!$root_folder) {
-            $zip->close();
-            return new \WP_Error('invalid_archive', __('Invalid ZIP archive structure.', 'kiss-smart-batch-installer'));
-        }
-
-        // Create plugin directory
-        $plugin_slug = sanitize_title($repo_name);
-        $plugin_dir = WP_PLUGIN_DIR . '/' . $plugin_slug;
-
-        if (!wp_mkdir_p($plugin_dir)) {
-            $zip->close();
-            return new \WP_Error('mkdir_failed', sprintf(__('Failed to create plugin directory: %s', 'kiss-smart-batch-installer'), $plugin_dir));
-        }
-
-        // Extract files
-        $extracted = false;
-        for ($i = 0; $i < $zip->numFiles; $i++) {
-            $filename = $zip->getNameIndex($i);
-
-            // Skip root folder and extract contents directly
-            if (strpos($filename, $root_folder . '/') === 0) {
-                $relative_path = substr($filename, strlen($root_folder) + 1);
-
-                if (empty($relative_path)) {
-                    continue; // Skip the root folder itself
-                }
-
-                $target_path = $plugin_dir . '/' . $relative_path;
-
-                // Create directory if needed
-                if (substr($filename, -1) === '/') {
-                    wp_mkdir_p($target_path);
-                    continue;
-                }
-
-                // Extract file
-                $file_content = $zip->getFromIndex($i);
-                if ($file_content !== false) {
-                    $target_dir = dirname($target_path);
-                    if (!is_dir($target_dir)) {
-                        wp_mkdir_p($target_dir);
-                    }
-
-                    if (file_put_contents($target_path, $file_content) !== false) {
-                        $extracted = true;
-                    }
-                }
-            }
-        }
-
-        $zip->close();
-
-        if (!$extracted) {
-            // Clean up on failure
-            $this->removeDirectory($plugin_dir);
-            return new \WP_Error('extraction_failed', __('Failed to extract plugin files.', 'kiss-smart-batch-installer'));
-        }
-
-        // Find the main plugin file
-        $plugin_file = $this->findMainPluginFile($plugin_dir, $repo_name);
-
-        if (!$plugin_file) {
-            // Clean up on failure
-            $this->removeDirectory($plugin_dir);
-            return new \WP_Error('no_plugin_file', __('Could not find main plugin file.', 'kiss-smart-batch-installer'));
-        }
-
-        return [
-            'plugin_dir' => $plugin_dir,
-            'plugin_file' => $plugin_slug . '/' . $plugin_file
-        ];
-    }
+    // Note: Legacy helper methods for manual download/extract have been removed in favor of WordPress core Upgrader usage.
 
     /**
      * Find the main plugin file in the extracted directory
@@ -329,24 +214,7 @@ class PluginInstaller
         return true;
     }
 
-    /**
-     * Recursively remove a directory
-     */
-    private function removeDirectory($dir)
-    {
-        if (!is_dir($dir)) {
-            return false;
-        }
-
-        $files = array_diff(scandir($dir), ['.', '..']);
-
-        foreach ($files as $file) {
-            $path = $dir . '/' . $file;
-            is_dir($path) ? $this->removeDirectory($path) : unlink($path);
-        }
-
-        return rmdir($dir);
-    }
+    // Note: Legacy removeDirectory helper removed; Upgrader handles extraction and cleanup.
 
     /**
      * AJAX handler for single plugin installation

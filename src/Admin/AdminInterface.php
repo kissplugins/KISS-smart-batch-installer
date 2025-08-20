@@ -632,6 +632,35 @@ class AdminInterface
                 $detectCheck['details'] = empty($failed_non_plugin)
                     ? sprintf(__('Checked %d repos: %d plugins, %d not plugins. Non-plugin assertions passed.', 'kiss-smart-batch-installer'), count($names), $counts['plugins'], $counts['not_plugins'])
                     : sprintf(__('Regression: %s should not be detected as a plugin.', 'kiss-smart-batch-installer'), $failed_non_plugin);
+        // 4) Upgrader dry-run (non-destructive)
+        $upgraderCheck = ['pass' => false, 'details' => ''];
+        try {
+            include_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+            $skin = new \WP_Upgrader_Skin();
+            $upgrader = new \Plugin_Upgrader($skin);
+            $testRepo = null;
+            if (!empty($org) && !is_wp_error($r1 ?? null)) {
+                $names = wp_list_pluck($r1['repositories'], 'name');
+                foreach ($names as $n) { if ($n && stripos($n, 'framework') === false) { $testRepo = $n; break; } }
+            }
+            if ($testRepo) {
+                $zipUrl = sprintf('https://github.com/%s/%s/archive/refs/heads/main.zip', urlencode($org), urlencode($testRepo));
+                // Probe only: verify we can fetch headers without installing
+                $resp = wp_remote_head($zipUrl, ['timeout' => 10]);
+                if (!is_wp_error($resp) && (int) wp_remote_retrieve_response_code($resp) === 200) {
+                    $upgraderCheck['pass'] = true;
+                    $upgraderCheck['details'] = sprintf(__('Zip reachable for %s (no install performed).', 'kiss-smart-batch-installer'), esc_html($testRepo));
+                } else {
+                    $upgraderCheck['details'] = __('Could not reach GitHub zip for dry-run.', 'kiss-smart-batch-installer');
+                }
+            } else {
+                $upgraderCheck['details'] = __('No suitable repository available for dry-run.', 'kiss-smart-batch-installer');
+            }
+        } catch (\Throwable $e) {
+            $upgraderCheck['details'] = $e->getMessage();
+        }
+        $results['upgrader_dry_run'] = array_merge(['label' => __('Upgrader dry-run (zip reachable)', 'kiss-smart-batch-installer')], $upgraderCheck);
+
             }
         } else if (empty($org)) {
             $detectCheck['details'] = __('Org not set; skipping.', 'kiss-smart-batch-installer');

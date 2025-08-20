@@ -333,7 +333,9 @@ jQuery(document).ready(function($) {
                     }
                 } else {
                     $button.prop('disabled', false).text(originalText);
-                    showError('Failed to install "' + repoName + '": ' + response.data);
+                    var extra = (response && response.data && response.data.logs) ? '\nDetails: ' + (Array.isArray(response.data.logs) ? response.data.logs.join(' | ') : response.data.logs) : '';
+                    showError('Failed to install "' + repoName + '": ' + response.data + extra);
+                    if (extra) { try { console.error('[KISS SBI] Upgrader logs:', response.data.logs); } catch(e){} }
                 }
             },
             error: function() {
@@ -423,7 +425,9 @@ jQuery(document).ready(function($) {
                         );
                     }
                 } else {
-                    $statusSpan.text('Error: ' + response.data).removeClass('installing').addClass('error');
+                    var extra = (response && response.data && response.data.logs) ? ' — details in console' : '';
+                    $statusSpan.text('Error: ' + response.data + extra).removeClass('installing').addClass('error');
+                    if (response && response.data && response.data.logs) { try { console.error('[KISS SBI] Upgrader logs:', response.data.logs); } catch(e){} }
                 }
             },
             error: function() {
