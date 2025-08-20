@@ -69,6 +69,12 @@ class PluginInstaller
         });
 
         // Rename the extracted GitHub directory (repo-main/) to the sanitized plugin slug
+        // Developer note:
+        // SelfUpdater registers a persistent `upgrader_source_selection` handler (see SelfUpdater::fixSourceDirectory)
+        // to ensure the SBI plugin updates in-place. Here, for third-party plugin installs, we scope the filter
+        // to this single install operation to avoid interfering with other core/plugin/theme upgrades that might
+        // occur elsewhere in WP. The filter is added just before ->install() and removed immediately after.
+
         $renameFilter = function ($source, $remote_source, $upgrader_obj, $hook_extra) use ($plugin_slug) {
             if (empty($source) || !is_dir($source)) return $source;
             // Desired path inside plugins dir

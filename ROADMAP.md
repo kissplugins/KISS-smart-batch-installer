@@ -204,7 +204,7 @@ The plugin currently uses a mix of custom file operations and WordPress core API
     $result = $upgrader->install($zip_url);
     ```
 
-- [ ] 🔥 **CRITICAL: Implement upgrader_source_selection filter**
+- [x] 🔥 **CRITICAL: Implement upgrader_source_selection filter** (PluginInstaller::installPlugin scoped filter; SelfUpdater::fixSourceDirectory global for SBI)
   - **Current:** Custom extraction assumes GitHub ZIP structure
   - **Required:** Mirror SelfUpdater's `fixSourceDirectory()` method for GitHub repos
   - **Purpose:** Handle GitHub's "repo-main" directory structure
