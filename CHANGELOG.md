@@ -15,6 +15,8 @@ All notable changes to this project will be documented in this file.
 ### Security/Compatibility
 - Prefer WP_Filesystem operations during Upgrader filters (rename/move/delete) and fallback to direct methods only if necessary
 - Improved compatibility with environments requiring filesystem credentials
+- Post-install validation now prefers WordPress plugin registry (get_plugins) with file scan fallback
+
 
 ## [1.1.0] - 2025-08-20
 ### Added

@@ -118,23 +118,22 @@ class PluginInstaller
             return new \WP_Error('install_failed', __('Installation failed.', 'kiss-smart-batch-installer') . (!empty($messages) ? ' | Logs: ' . implode(' • ', array_map('sanitize_text_field', $messages)) : ''));
         }
 
-        // Post-install: locate main plugin file
+        // Post-install: locate main plugin file (prefer WordPress registry)
+        if (!function_exists('get_plugins')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
         $plugin_file_rel = null;
-        $main_file = $this->findMainPluginFile($plugin_dir, $repo_name);
-        if ($main_file) {
-            $plugin_file_rel = $plugin_slug . '/' . $main_file;
-        } else {
-            // Fallback: try to find using get_plugins() by directory
-            if (!function_exists('get_plugins')) {
-                require_once ABSPATH . 'wp-admin/includes/plugin.php';
-            }
-            $all = function_exists('get_plugins') ? get_plugins() : [];
-            foreach ($all as $file => $data) {
-                $parts = explode('/', $file, 2);
-                if (strtolower($parts[0] ?? '') === strtolower($plugin_slug)) { $plugin_file_rel = $file; break; }
-            }
-            if (!$plugin_file_rel) {
-                // Could not find a valid main file
+        $all = function_exists('get_plugins') ? get_plugins() : [];
+        foreach ($all as $file => $data) {
+            $parts = explode('/', $file, 2);
+            if (strtolower($parts[0] ?? '') === strtolower($plugin_slug)) { $plugin_file_rel = $file; break; }
+        }
+        if (!$plugin_file_rel) {
+            // Fallback: file system scan for a valid plugin header inside installed directory
+            $main_file = $this->findMainPluginFile($plugin_dir, $repo_name);
+            if ($main_file) {
+                $plugin_file_rel = $plugin_slug . '/' . $main_file;
+            } else {
                 return new \WP_Error('no_plugin_file', __('Could not find main plugin file after installation.', 'kiss-smart-batch-installer'));
             }
         }
