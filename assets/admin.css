@@ -444,3 +444,14 @@
     color: #856404;
 }
 
+.kiss-sbi-cache-indicator.is-loading {
+    background: #e7f1ff;
+    color: #1d4ed8;
+}
+.kiss-sbi-cache-indicator.stale,
+.kiss-sbi-cache-indicator.is-stale {
+    background: #fff8e1;
+    color: #8d6e00;
+}
+
+

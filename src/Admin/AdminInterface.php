@@ -117,6 +117,7 @@ class AdminInterface
         if (!function_exists('is_plugin_active')) {
             require_once ABSPATH . 'wp-admin/includes/plugin.php';
         }
+        // Keep server-side flag best-effort only; runtime JS will also detect PQS
         $has_pqs = function_exists('is_plugin_active') && is_plugin_active('plugin-quick-search/plugin-quick-search.php');
 
         wp_enqueue_script(
@@ -232,6 +233,10 @@ class AdminInterface
 
                     <button type="button" class="button" id="kiss-sbi-clear-cache">
                         <?php _e('Clear Cache', 'kiss-smart-batch-installer'); ?>
+                    </button>
+
+                    <button type="button" class="button" id="kiss-sbi-rebuild-pqs" title="<?php esc_attr_e('Force rebuild of Plugin Quick Search cache', 'kiss-smart-batch-installer'); ?>">
+                        <?php _e('Rebuild PQS', 'kiss-smart-batch-installer'); ?>
                     </button>
 
                     <span id="kiss-sbi-pqs-indicator" class="kiss-sbi-cache-indicator" title="<?php esc_attr_e('Shows whether Plugin Quick Search cache is being used', 'kiss-smart-batch-installer'); ?>">
@@ -578,7 +583,28 @@ class AdminInterface
         if (!function_exists('is_plugin_active')) {
             require_once ABSPATH . 'wp-admin/includes/plugin.php';
         }
-        $hasPqs = function_exists('is_plugin_active') && is_plugin_active('plugin-quick-search/plugin-quick-search.php');
+        if (!function_exists('get_plugins')) {
+            require_once ABSPATH . 'wp-admin/includes/plugin.php';
+        }
+        $hasPqs = false;
+        if (function_exists('is_plugin_active')) {
+            // Check common slug first
+            if (is_plugin_active('plugin-quick-search/plugin-quick-search.php')) {
+                $hasPqs = true;
+            } else if (function_exists('get_plugins')) {
+                // Fallback: scan all plugins for a likely PQS entry that is active
+                $all_plugins = get_plugins();
+                foreach ($all_plugins as $file => $data) {
+                    $name = strtolower($data['Name'] ?? '');
+                    if (strpos($name, 'plugin quick search') !== false || strpos($file, 'plugin-quick-search') !== false) {
+                        if (is_plugin_active($file)) {
+                            $hasPqs = true;
+                            break;
+                        }
+                    }
+                }
+            }
+        }
         $results['pqs_found'] = [
             'label' => __('PQS Cache plugin found', 'kiss-smart-batch-installer'),
             'pass' => (bool) $hasPqs,
@@ -618,16 +644,12 @@ class AdminInterface
             }
             function run(){
                 try{
-                    if (typeof window.pqsCacheStatus === 'function'){
-                        var status = window.pqsCacheStatus();
-                        var raw = localStorage.getItem('pqs_plugin_cache');
-                        var len = 0; try { var arr = JSON.parse(raw||'[]'); len = Array.isArray(arr)?arr.length:0; } catch(e) {}
-                        var used = (status === 'fresh');
-                        var detail = 'status=' + status + ', entries=' + len;
-                        setRow(!!used, detail);
-                    } else {
-                        setRow(false, 'pqsCacheStatus() not available.');
-                    }
+                    var raw = localStorage.getItem('pqs_plugin_cache');
+                    var len = 0; try { var arr = JSON.parse(raw||'[]'); len = Array.isArray(arr)?arr.length:0; } catch(e) {}
+                    var status = (typeof window.pqsCacheStatus === 'function') ? window.pqsCacheStatus() : (len > 0 ? 'unknown' : 'missing');
+                    var used = (status === 'fresh') || (status === 'unknown' && len > 0);
+                    var detail = 'status=' + status + ', entries=' + len + (status==='unknown' ? ' (via localStorage)' : '');
+                    setRow(!!used, detail);
                 }catch(e){
                     setRow(false, 'Error: ' + (e && e.message ? e.message : e));
                 }

@@ -4,16 +4,20 @@ function kissSbiUpdatePqsIndicator(state) {
     try {
         var el = document.getElementById('kiss-sbi-pqs-indicator');
         if (!el) return;
+        el.classList.remove('is-using', 'is-not-using', 'is-loading', 'is-stale');
         if (state === 'using') {
-            el.classList.remove('is-not-using');
             el.classList.add('is-using');
             el.textContent = 'PQS: Using Cache ✓';
+        } else if (state === 'loading') {
+            el.classList.add('is-loading');
+            el.textContent = 'PQS: Building Cache…';
+        } else if (state === 'stale') {
+            el.classList.add('is-stale');
+            el.textContent = 'PQS: Using Stale Cache';
         } else if (state === 'not-using') {
-            el.classList.remove('is-using');
             el.classList.add('is-not-using');
             el.textContent = 'PQS: Not Using Cache';
         } else {
-            el.classList.remove('is-using', 'is-not-using');
             el.textContent = 'PQS: Checking…';
         }
     } catch (e) {}
@@ -24,15 +28,31 @@ function kissSbiUpdatePqsIndicator(state) {
     // PQS Cache Integration
     const PQSCacheIntegration = {
         init: function() {
-            if (typeof kissSbiAjax !== 'undefined' && kissSbiAjax && kissSbiAjax.hasPQS) {
-                kissSbiUpdatePqsIndicator('checking');
-                if (typeof window.pqsCacheStatus === 'function') {
-                    this.integrateWithPQSCache();
-                } else {
-                    kissSbiUpdatePqsIndicator('not-using');
-                }
-            } else {
-                kissSbiUpdatePqsIndicator('not-using');
+            // Always attempt runtime detection at runtime
+            kissSbiUpdatePqsIndicator('checking');
+            this.integrateWithPQSCache();
+
+            // Wire up Rebuild PQS button if present
+            var rebuildBtn = document.getElementById('kiss-sbi-rebuild-pqs');
+            if (rebuildBtn) {
+                rebuildBtn.addEventListener('click', async function() {
+                    if (typeof window.pqsRebuildCache !== 'function') {
+                        console.warn('KISS SBI: pqsRebuildCache not available');
+                        return;
+                    }
+                    try {
+                        kissSbiUpdatePqsIndicator('loading');
+                        rebuildBtn.disabled = true;
+                        await window.pqsRebuildCache();
+                        // pqs-cache-rebuilt will fire; we still ensure indicator updates
+                        kissSbiUpdatePqsIndicator('using');
+                    } catch (e) {
+                        console.warn('KISS SBI: PQS rebuild failed', e);
+                        kissSbiUpdatePqsIndicator('not-using');
+                    } finally {
+                        rebuildBtn.disabled = false;
+                    }
+                });
             }
         },
 
@@ -43,13 +63,23 @@ function kissSbiUpdatePqsIndicator(state) {
                     console.log('KISS SBI: PQS cache available, pre-scanning installed plugins');
                     this.scanInstalledPlugins();
                     kissSbiUpdatePqsIndicator('using');
+                } else if (status === 'loading') {
+                    kissSbiUpdatePqsIndicator('loading');
+                } else if (status === 'stale') {
+                    // Show stale state and still scan to provide partial UX benefits
+                    console.log('KISS SBI: PQS cache is stale; scanning anyway for hints');
+                    this.scanInstalledPlugins();
+                    kissSbiUpdatePqsIndicator('stale');
+                } else if (status === 'error') {
+                    kissSbiUpdatePqsIndicator('not-using');
                 } else {
                     kissSbiUpdatePqsIndicator('not-using');
                 }
 
                 // Listen for PQS cache updates
-                document.addEventListener('pqs-cache-rebuilt', () => {
-                    console.log('KISS SBI: PQS cache rebuilt, rescanning installed plugins');
+                document.addEventListener('pqs-cache-rebuilt', (event) => {
+                    var count = event && event.detail && typeof event.detail.pluginCount === 'number' ? event.detail.pluginCount : 'unknown';
+                    console.log('KISS SBI: PQS cache rebuilt, plugins in cache:', count);
                     this.scanInstalledPlugins();
                     kissSbiUpdatePqsIndicator('using');
                 });
@@ -66,17 +96,22 @@ function kissSbiUpdatePqsIndicator(state) {
                 const installedPlugins = new Map();
 
                 pluginData.forEach(plugin => {
-                    // Create several slug variants for matching
+                    // Accept fields: slug, name, isActive, settingsUrl
+                    const slug = (plugin.slug || '').toLowerCase();
                     const nameLower = (plugin.nameLower || plugin.name || '').toLowerCase();
-                    const variants = [
+                    const variants = [];
+                    if (slug) variants.push(slug, slug.replace(/[^a-z0-9]/g, '-'), slug.replace(/[-_]/g, ''));
+                    if (nameLower) variants.push(
+                        nameLower,
                         nameLower.replace(/\s+/g, '-'),
                         nameLower.replace(/[^a-z0-9]/g, '-'),
                         nameLower.replace(/[-_]/g, '')
-                    ];
+                    );
 
-                    variants.forEach(slug => {
-                        installedPlugins.set(slug, {
-                            name: plugin.name,
+                    variants.forEach(s => {
+                        if (!s) return;
+                        installedPlugins.set(s, {
+                            name: plugin.name || plugin.slug || s,
                             isActive: !!plugin.isActive,
                             settingsUrl: plugin.settingsUrl || ''
                         });
