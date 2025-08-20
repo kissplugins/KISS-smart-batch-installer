@@ -82,11 +82,22 @@ class PluginInstaller
             $desired = trailingslashit($desired);
             $target = trailingslashit(dirname($source)) . basename($desired);
             if ($source !== $target) {
-                // Remove target if exists (very unlikely as we pre-checked)
-                if (is_dir($target)) {
-                    // best-effort cleanup
-                    @rmdir($target);
+                // Prefer WordPress filesystem API during upgrader operations
+                global $wp_filesystem;
+                if (!$wp_filesystem) {
+                    if (!function_exists('WP_Filesystem')) {
+                        require_once ABSPATH . 'wp-admin/includes/file.php';
+                    }
+                    WP_Filesystem();
                 }
+                if ($wp_filesystem) {
+                    if ($wp_filesystem->exists($target)) {
+                        $wp_filesystem->delete($target, true);
+                    }
+                    $moved = $wp_filesystem->move($source, $target, true);
+                    return $moved ? $target : $source;
+                }
+                // Fallback to direct rename
                 @rename($source, $target);
                 return $target;
             }

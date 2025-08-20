@@ -125,10 +125,27 @@ class SelfUpdater
         if (empty($source) || strpos($source, 'KISS-Smart-Batch-Installer-main') === false) return $source;
         $desired = trailingslashit(WP_PLUGIN_DIR) . basename(dirname(\KISS_SBI_PLUGIN_FILE));
         $desired = trailingslashit($desired);
-        $source_basename = trailingslashit(dirname($source)) . basename($desired);
-        // Move/rename
-        @rename($source, $source_basename);
-        return $source_basename;
+        $target = trailingslashit(dirname($source)) . basename($desired);
+
+        // Prefer WordPress filesystem API during upgrader operations
+        global $wp_filesystem;
+        if (!$wp_filesystem) {
+            if (!function_exists('WP_Filesystem')) {
+                require_once ABSPATH . 'wp-admin/includes/file.php';
+            }
+            WP_Filesystem();
+        }
+        if ($wp_filesystem) {
+            if ($wp_filesystem->exists($target)) {
+                $wp_filesystem->delete($target, true);
+            }
+            $moved = $wp_filesystem->move($source, $target, true);
+            return $moved ? $target : $source;
+        }
+
+        // Fallback to direct rename
+        @rename($source, $target);
+        return $target;
     }
 }
 
