@@ -5,6 +5,7 @@
 - Verbose Upgrader error logs surfaced in UI for single and batch installs; logs available via console
 - Self Tests: added Upgrader dry-run (non-destructive HEAD check for main.zip)
 - Cleaned up legacy manual download/extract helpers; rely on Upgrader and WP_Filesystem
+- Synced repository row controls after install status checks to prevent conflicting states (admin.js)
 
 ### Security/Compatibility
 - Prefer WP_Filesystem operations during Upgrader filters (rename/move/delete) and fallback to direct methods only if necessary

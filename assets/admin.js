@@ -489,6 +489,7 @@ jQuery(document).ready(function($) {
         const $installButton = $actionsCell.find('.kiss-sbi-install-single');
         const $row = $button.closest('tr');
         const $statusCell = $row.find('.kiss-sbi-plugin-status');
+        const $checkbox = $row.find('.kiss-sbi-repo-checkbox');
 
         $button.prop('disabled', true).text('Checking...');
 
@@ -511,6 +512,8 @@ jQuery(document).ready(function($) {
                     // Remove the check button and install button, then show Activate only if inactive
                     $button.remove();
                     $installButton.remove();
+                    $checkbox.prop('checked', false).prop('disabled', true);
+                    $row.addClass('plugin-installed');
                     if (!pluginData.active) {
                         $actionsCell.prepend(
                             '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' +
@@ -522,7 +525,11 @@ jQuery(document).ready(function($) {
                     $button.remove();
                     $statusCell.removeClass('is-installed').empty();
                     $installButton.show().prop('disabled', false);
+                    $checkbox.prop('disabled', false);
+                    $row.removeClass('plugin-installed');
                 }
+                updateCheckedPlugins();
+                updateBatchInstallButton();
             },
             error: function() {
                 $button.prop('disabled', false).text('Check Status');
