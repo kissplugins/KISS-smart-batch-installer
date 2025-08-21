@@ -67,9 +67,20 @@ class SelfUpdater
         $remote = $this->getRemoteVersion($force);
         $installed = $this->getInstalledVersion();
         if (is_wp_error($remote)) {
-            wp_send_json_success(['available' => false, 'installed' => $installed, 'remote' => null, 'error' => $remote->get_error_message()]);
+            wp_send_json_success(['available' => false, 'installed' => $installed, 'remote' => null, 'error' => $remote->get_error_message(), 'status' => 'unknown']);
         }
-        wp_send_json_success(['available' => version_compare($remote, $installed, '>'), 'installed' => $installed, 'remote' => $remote]);
+        $status = 'equal';
+        if (version_compare($installed, $remote, '>')) {
+            $status = 'newer';
+        } elseif (version_compare($installed, $remote, '<')) {
+            $status = 'older';
+        }
+        wp_send_json_success([
+            'available' => ($status === 'older'),
+            'installed' => $installed,
+            'remote' => $remote,
+            'status' => $status,
+        ]);
     }
 
     public function ajaxRunSelfUpdate()

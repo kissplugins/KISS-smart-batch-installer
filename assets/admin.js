@@ -54,12 +54,18 @@ jQuery(document).ready(function($) {
                     $meta.text('Update check failed: ' + data.error);
                     return;
                 }
-                if (data.available) {
+                if (data.status === 'newer') {
+                    $btn.hide();
+                    $meta.text('Current (v' + data.installed + ') is newer than GitHub (v' + data.remote + ')');
+                } else if (data.status === 'older') {
                     $btn.show().text('Update to v' + data.remote);
                     $meta.text('(Installed v' + data.installed + ')');
-                } else {
+                } else if (data.status === 'equal') {
                     $btn.hide();
                     $meta.text('Up to date (v' + data.installed + ')');
+                } else {
+                    $btn.hide();
+                    $meta.text('Update status unknown');
                 }
             });
         }
@@ -320,7 +326,7 @@ jQuery(document).ready(function($) {
             success: function(response) {
                 if (response.success) {
                     if (response.data.activated) {
-                        $button.text(kissSbiAjax.strings.installed).addClass('button-disabled');
+                        $button.replaceWith('<span class="kiss-sbi-plugin-already-activated">Installed</span>');
                         showSuccess('Plugin "' + repoName + '" installed and activated successfully.');
                     } else {
                         // Show activate button
@@ -417,7 +423,7 @@ jQuery(document).ready(function($) {
                     // Update single install button if visible
                     const $singleButton = $('.kiss-sbi-install-single[data-repo="' + repoName + '"]');
                     if (response.data.activated) {
-                        $singleButton.text(kissSbiAjax.strings.installed).addClass('button-disabled').prop('disabled', true);
+                        $singleButton.replaceWith('<span class="kiss-sbi-plugin-already-activated">Installed</span>');
                     } else {
                         $singleButton.replaceWith(
                             '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' +
@@ -501,8 +507,8 @@ jQuery(document).ready(function($) {
                         );
                     }
                 } else {
-                    // Not installed - show install button
-                    $button.text('Not Installed').prop('disabled', true);
+                    // Not installed - show install button and hide other inactive controls
+                    $button.remove();
                     $installButton.show().prop('disabled', false);
                 }
             },

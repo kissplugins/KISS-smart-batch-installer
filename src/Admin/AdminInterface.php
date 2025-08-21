@@ -390,7 +390,7 @@ class AdminInterface
                                 <button type="button" class="button button-primary kiss-sbi-self-update" data-repo="<?php echo esc_attr($repo['name']); ?>" style="margin-left:8px; display:none;">
                                     <?php _e('Update', 'kiss-smart-batch-installer'); ?>
                                 </button>
-                                <span class="kiss-sbi-self-update-meta" style="margin-left:8px;color:#646970;"></span>
+                                <span class="kiss-sbi-self-update-meta" style="color:#646970;"></span>
                             <?php else: ?>
                                 <button type="button" class="button button-small kiss-sbi-check-installed" data-repo="<?php echo esc_attr($repo['name']); ?>">
                                     <?php _e('Check Status', 'kiss-smart-batch-installer'); ?>
