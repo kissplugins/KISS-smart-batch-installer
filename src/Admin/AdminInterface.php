@@ -645,13 +645,21 @@ class AdminInterface
             }
             if ($testRepo) {
                 $zipUrl = sprintf('https://github.com/%s/%s/archive/refs/heads/main.zip', urlencode($org), urlencode($testRepo));
-                // Probe only: verify we can fetch headers without installing
-                $resp = wp_remote_head($zipUrl, ['timeout' => 10]);
-                if (!is_wp_error($resp) && (int) wp_remote_retrieve_response_code($resp) === 200) {
+                // Probe only: verify reachability without installing (HEAD then Range GET fallback)
+                $resp = wp_remote_head($zipUrl, ['timeout' => 10, 'redirection' => 5]);
+                $code = !is_wp_error($resp) ? (int) wp_remote_retrieve_response_code($resp) : 0;
+                $ok = ($code >= 200 && $code < 300) || ($code >= 300 && $code < 400);
+                if (!$ok) {
+                    // Fallback: GET first byte only to avoid full download
+                    $resp = wp_remote_get($zipUrl, ['timeout' => 10, 'redirection' => 5, 'headers' => ['Range' => 'bytes=0-0']]);
+                    $code = !is_wp_error($resp) ? (int) wp_remote_retrieve_response_code($resp) : 0;
+                    $ok = in_array($code, [200, 206], true);
+                }
+                if ($ok) {
                     $upgraderCheck['pass'] = true;
-                    $upgraderCheck['details'] = sprintf(__('Zip reachable for %s (no install performed).', 'kiss-smart-batch-installer'), esc_html($testRepo));
+                    $upgraderCheck['details'] = sprintf(__('Zip reachable for %s (HTTP %d; no install performed).', 'kiss-smart-batch-installer'), esc_html($testRepo), $code);
                 } else {
-                    $upgraderCheck['details'] = __('Could not reach GitHub zip for dry-run.', 'kiss-smart-batch-installer');
+                    $upgraderCheck['details'] = sprintf(__('Could not reach GitHub zip for dry-run (HTTP %d).', 'kiss-smart-batch-installer'), $code);
                 }
             } else {
                 $upgraderCheck['details'] = __('No suitable repository available for dry-run.', 'kiss-smart-batch-installer');
@@ -713,6 +721,43 @@ class AdminInterface
             'pass' => false,
             'details' => __('Will be verified in-browser using pqsCacheStatus().', 'kiss-smart-batch-installer'),
         ];
+
+        // Filesystem readiness (WP_Filesystem)
+        $fsCheck = ['pass' => false, 'details' => ''];
+        try {
+            if (!function_exists('WP_Filesystem')) {
+                require_once ABSPATH . 'wp-admin/includes/file.php';
+            }
+            $init = WP_Filesystem();
+            global $wp_filesystem;
+            if (!$init || !$wp_filesystem) {
+                $fsCheck['details'] = __('Could not initialize WP_Filesystem (credentials may be required).', 'kiss-smart-batch-installer');
+            } else {
+                $method = method_exists($wp_filesystem, 'method') ? $wp_filesystem->method : 'unknown';
+                // Use uploads dir for safe write
+                $uploads = wp_get_upload_dir();
+                $base = trailingslashit($uploads['basedir']) . 'kiss-sbi-selftest';
+                $file = trailingslashit($base) . 'probe.txt';
+                // Ensure base dir
+                if (!$wp_filesystem->exists($base)) {
+                    $wp_filesystem->mkdir($base);
+                }
+                $okWrite = $wp_filesystem->put_contents($file, 'ok:' . time());
+                $okRead = $okWrite && $wp_filesystem->exists($file) && is_string($wp_filesystem->get_contents($file));
+                $okDelete = $okRead && $wp_filesystem->delete($file);
+                // Try remove dir (ignore failure if non-empty)
+                $wp_filesystem->delete($base, true);
+                if ($okWrite && $okRead && $okDelete) {
+                    $fsCheck['pass'] = true;
+                    $fsCheck['details'] = sprintf(__('WP_Filesystem ready (method=%s). Wrote and removed test file in uploads.', 'kiss-smart-batch-installer'), esc_html($method));
+                } else {
+                    $fsCheck['details'] = sprintf(__('WP_Filesystem write/read/delete failed (method=%s). Check permissions on uploads.', 'kiss-smart-batch-installer'), esc_html($method));
+                }
+            }
+        } catch (\Throwable $e) {
+            $fsCheck['details'] = $e->getMessage();
+        }
+        $results['fs_ready'] = array_merge(['label' => __('Filesystem readiness (WP_Filesystem)', 'kiss-smart-batch-installer')], $fsCheck);
 
         // Render page
         echo '<div class="wrap">';
