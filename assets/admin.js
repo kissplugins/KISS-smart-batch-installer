@@ -256,11 +256,15 @@ jQuery(document).ready(function($) {
                     if (response.data && response.data.is_plugin) {
                         // If we've already determined the plugin is installed, do not overwrite or re-show install controls
                         if (!$statusCell.hasClass('is-installed')) {
-                            $statusCell.html('<span class="kiss-sbi-plugin-yes">✓ WordPress Plugin</span>')
-                                      .addClass('is-plugin');
+                            $statusCell
+                                .html('<span class="kiss-sbi-plugin-yes">✓ WordPress Plugin</span>')
+                                .addClass('is-plugin');
 
                             // Show and enable install button
                             $row.find('.kiss-sbi-install-single').show().prop('disabled', false);
+
+                            // Ensure checkbox available for valid plugin rows
+                            $row.find('.kiss-sbi-repo-checkbox').prop('disabled', false);
 
                             // Show plugin info if available
                             if (response.data.plugin_data && response.data.plugin_data.plugin_name) {
@@ -279,8 +283,13 @@ jQuery(document).ready(function($) {
                         if (response.data && response.data.plugin_data && response.data.plugin_data.message) {
                             detail = ' (' + response.data.plugin_data.message + ')';
                         }
-                        $statusCell.html('<span class="kiss-sbi-plugin-no">✗ Not a Plugin</span>')
-                                  .removeClass('is-plugin');
+                        $statusCell
+                            .html('<span class="kiss-sbi-plugin-no">✗ Not a Plugin</span>')
+                            .removeClass('is-plugin');
+
+                        // Remove install/status controls and disable selection for non-plugins
+                        $row.find('.kiss-sbi-install-single, .kiss-sbi-check-installed').remove();
+                        $row.find('.kiss-sbi-repo-checkbox').prop('checked', false).prop('disabled', true);
                     }
 
                     updateCheckedPlugins();
@@ -517,12 +526,21 @@ jQuery(document).ready(function($) {
                             pluginData.plugin_file + '" data-repo="' + repoName + '">Activate →</button>'
                         );
                     }
+
+                    // Disable selection for installed plugins
+                    $row.find('.kiss-sbi-repo-checkbox').prop('checked', false).prop('disabled', true);
                 } else {
                     // Not installed - show install button and hide other inactive controls
                     $button.remove();
                     $statusCell.removeClass('is-installed').empty();
                     $installButton.show().prop('disabled', false);
+
+                    // Ensure selection is available if previously disabled
+                    $row.find('.kiss-sbi-repo-checkbox').prop('disabled', false);
                 }
+
+                updateCheckedPlugins();
+                updateBatchInstallButton();
             },
             error: function() {
                 $button.prop('disabled', false).text('Check Status');
