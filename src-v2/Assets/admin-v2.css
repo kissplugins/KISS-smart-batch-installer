@@ -1,0 +1,125 @@
+/**
+ * Admin CSS for KISS Smart Batch Installer v2
+ * 
+ * WordPress-native styling that matches the standard plugins page
+ * with improvements for the new interface.
+ */
+
+/* List Table Columns */
+.wp-list-table .column-plugin {
+    width: 25%;
+}
+
+.wp-list-table .column-description {
+    width: 45%;
+}
+
+.wp-list-table .column-actions {
+    width: 20%;
+}
+
+/* Plugin State Styling */
+.plugin-state {
+    color: #646970;
+    font-weight: normal;
+}
+
+/* Installed Plugin Row Styling */
+.wp-list-table tbody tr.plugin-installed {
+    background-color: #f6f7f7;
+}
+
+.wp-list-table tbody tr.plugin-installed td {
+    border-left: 4px solid #00a32a;
+}
+
+/* Button Styling */
+.button-group {
+    display: inline-flex;
+    gap: 4px;
+}
+
+/* Loading States */
+.button:disabled {
+    opacity: 0.6;
+    cursor: not-allowed;
+}
+
+/* WordPress-style Notices */
+.notice {
+    margin: 5px 0 15px;
+}
+
+.notice p {
+    margin: 0.5em 0;
+}
+
+/* Bulk Actions Bar */
+.tablenav {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin: 20px 0;
+    padding: 8px 0;
+}
+
+.bulk-actions {
+    display: flex;
+    gap: 8px;
+    align-items: center;
+}
+
+#activate-after-install {
+    margin-left: 10px;
+}
+
+/* Phase 1 Specific Styling */
+.kiss-sbi-v2-phase1 {
+    background: #f0f6fc;
+    border: 1px solid #c3c4c7;
+    border-radius: 4px;
+    padding: 20px;
+    margin: 20px 0;
+}
+
+.kiss-sbi-v2-phase1 h3 {
+    margin-top: 0;
+    color: #1d2327;
+}
+
+.kiss-sbi-v2-phase1 p {
+    margin-bottom: 0;
+}
+
+/* Responsive Design */
+@media screen and (max-width: 782px) {
+    .wp-list-table .column-plugin,
+    .wp-list-table .column-description,
+    .wp-list-table .column-actions {
+        width: auto;
+    }
+    
+    .button-group {
+        flex-direction: column;
+        gap: 2px;
+    }
+    
+    .tablenav {
+        flex-direction: column;
+        gap: 10px;
+        align-items: stretch;
+    }
+}
+
+/* Dark Mode Support */
+@media (prefers-color-scheme: dark) {
+    .kiss-sbi-v2-phase1 {
+        background: #1e1e1e;
+        border-color: #3c434a;
+        color: #f0f0f1;
+    }
+    
+    .kiss-sbi-v2-phase1 h3 {
+        color: #f0f0f1;
+    }
+}

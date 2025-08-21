@@ -1,6 +1,25 @@
-# KISS Smart Batch Installer (SBI) (SBI)
+# KISS Smart Batch Installer (SBI) v2.0
 
 A WordPress plugin that allows you to manage and batch install WordPress plugins directly from your GitHub organization's most recently updated repositories.
+
+## 🎉 Version 2.0 - Complete Rebuild
+
+Version 2.0 introduces a completely rebuilt architecture with a WordPress-native interface that eliminates confusion and improves performance.
+
+### What's New in v2.0
+
+- **WordPress-Native Interface**: Familiar WP_List_Table design that matches the standard WordPress plugins page
+- **Single Consolidated Column**: No more confusion between Status and Actions - everything is clear and intuitive
+- **Modern Architecture**: PSR-4 autoloading, dependency injection, and clean separation of concerns
+- **Better Performance**: Optimized caching and reduced synchronization issues
+- **Improved Error Handling**: Clear feedback and better debugging capabilities
+
+### Migration to v2.0
+
+The new interface is available via Settings with a feature flag for safe testing:
+1. Go to **Plugins > GitHub Org Repos > Settings**
+2. Check "Use New Interface (Beta)"
+3. Or preview instantly by adding `?kiss_sbi_v2=1` to any admin page URL
 
 ## Features
 

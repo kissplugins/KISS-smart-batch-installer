@@ -3,7 +3,7 @@
  * Plugin Name: KISS Smart Batch Installer
  * Plugin URI: https://github.com/your-org/github-org-repo-manager
  * Description: Manage and batch install WordPress plugins from your GitHub organization's most recently updated repositories.
- * Version: 1.1.1
+ * Version: 2.0.0
  * Author: KISS Plugins
  * Author URI: https://github.com/kissplugins?tab=repositories
  * License: GPL v2 or later
@@ -22,7 +22,7 @@ if (!defined('ABSPATH')) {
 }
 
 // Define plugin constants
-define('KISS_SBI_VERSION', '1.1.1');
+define('KISS_SBI_VERSION', '2.0.0');
 define('KISS_SBI_PLUGIN_FILE', __FILE__);
 define('KISS_SBI_PLUGIN_DIR', plugin_dir_path(__FILE__));
 define('KISS_SBI_PLUGIN_URL', plugin_dir_url(__FILE__));
@@ -54,6 +54,7 @@ spl_autoload_register(function ($class) {
 class KissSmartBatchInstaller
 {
     private static $instance = null;
+    private $v2_plugin = null;
 
     public static function getInstance()
     {
@@ -89,13 +90,24 @@ class KissSmartBatchInstaller
 
     public function initializePlugin()
     {
-        if (is_admin()) {
-            new \KissSmartBatchInstaller\Admin\AdminInterface();
-        }
+        // Feature flag check - default to false for now (will switch to true in Phase 3)
+        $use_v2 = get_option('kiss_sbi_use_v2', false) || defined('KISS_SBI_FORCE_V2');
 
-        new \KissSmartBatchInstaller\Core\GitHubScraper();
-        new \KissSmartBatchInstaller\Core\PluginInstaller();
-        new \KissSmartBatchInstaller\Core\SelfUpdater();
+        if ($use_v2) {
+            // Initialize v2 architecture
+            require_once KISS_SBI_PLUGIN_DIR . 'includes/bootstrap-v2.php';
+            $this->v2_plugin = new \KissSmartBatchInstaller\V2\Plugin();
+            $this->v2_plugin->init();
+        } else {
+            // Legacy v1 initialization
+            if (is_admin()) {
+                new \KissSmartBatchInstaller\Admin\AdminInterface();
+            }
+
+            new \KissSmartBatchInstaller\Core\GitHubScraper();
+            new \KissSmartBatchInstaller\Core\PluginInstaller();
+            new \KissSmartBatchInstaller\Core\SelfUpdater();
+        }
     }
 
     public function activate()

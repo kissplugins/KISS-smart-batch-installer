@@ -2,7 +2,24 @@
 
 All notable changes to this project will be documented in this file.
 
+## [2.0.0] - 2025-08-21
+### Major Release - Complete Architecture Rebuild
+- **NEW**: Complete rewrite with modern PSR-4 architecture and WordPress-native UI
+- **NEW**: Single consolidated column interface eliminates Status/Actions confusion
+- **NEW**: WordPress WP_List_Table implementation for familiar user experience
+- **NEW**: Feature flag system allows safe testing of v2 interface
+- **NEW**: Modern JavaScript with proper event delegation and error handling
+- **NEW**: Dependency injection container for better code organization
+- **NEW**: Plugin state model with clear states and action buttons
+- **BREAKING**: Legacy v1 interface will be phased out (feature flag available for transition)
+- **IMPROVED**: Eliminated jQuery/state synchronization issues
+- **IMPROVED**: Better error handling and user feedback
+- **IMPROVED**: Performance optimizations with proper caching strategies
 
+### Migration Notes
+- Users can enable the new interface via Settings > "Use New Interface (Beta)"
+- Preview available by adding `?kiss_sbi_v2=1` to any admin page URL
+- All existing settings and cache data remain compatible
 
 ## [1.1.1] - 2025-08-20
 ### Changed
