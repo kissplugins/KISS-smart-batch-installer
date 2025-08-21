@@ -254,21 +254,24 @@ jQuery(document).ready(function($) {
                 dbg('Scan response', response);
                 if (response && response.success) {
                     if (response.data && response.data.is_plugin) {
-                        $statusCell.html('<span class="kiss-sbi-plugin-yes">✓ WordPress Plugin</span>')
-                                  .addClass('is-plugin');
+                        // If we've already determined the plugin is installed, do not overwrite or re-show install controls
+                        if (!$statusCell.hasClass('is-installed')) {
+                            $statusCell.html('<span class="kiss-sbi-plugin-yes">✓ WordPress Plugin</span>')
+                                      .addClass('is-plugin');
 
-                        // Show and enable install button
-                        $row.find('.kiss-sbi-install-single').show().prop('disabled', false);
+                            // Show and enable install button
+                            $row.find('.kiss-sbi-install-single').show().prop('disabled', false);
 
-                        // Show plugin info if available
-                        if (response.data.plugin_data && response.data.plugin_data.plugin_name) {
-                            const pluginName = response.data.plugin_data.plugin_name;
-                            const version = response.data.plugin_data.version;
-                            let tooltip = 'Plugin: ' + pluginName;
-                            if (version) {
-                                tooltip += ' (v' + version + ')';
+                            // Show plugin info if available
+                            if (response.data.plugin_data && response.data.plugin_data.plugin_name) {
+                                const pluginName = response.data.plugin_data.plugin_name;
+                                const version = response.data.plugin_data.version;
+                                let tooltip = 'Plugin: ' + pluginName;
+                                if (version) {
+                                    tooltip += ' (v' + version + ')';
+                                }
+                                $statusCell.find('span').attr('title', tooltip);
                             }
-                            $statusCell.find('span').attr('title', tooltip);
                         }
                     } else {
                         // Not a plugin or undetected; include details if provided
@@ -326,7 +329,7 @@ jQuery(document).ready(function($) {
             success: function(response) {
                 if (response.success) {
                     if (response.data.activated) {
-                        $button.replaceWith('<span class="kiss-sbi-plugin-already-activated">Installed</span>');
+                        $button.remove();
                         showSuccess('Plugin "' + repoName + '" installed and activated successfully.');
                     } else {
                         // Show activate button
@@ -423,7 +426,7 @@ jQuery(document).ready(function($) {
                     // Update single install button if visible
                     const $singleButton = $('.kiss-sbi-install-single[data-repo="' + repoName + '"]');
                     if (response.data.activated) {
-                        $singleButton.replaceWith('<span class="kiss-sbi-plugin-already-activated">Installed</span>');
+                        $singleButton.remove();
                     } else {
                         $singleButton.replaceWith(
                             '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' +
@@ -484,6 +487,8 @@ jQuery(document).ready(function($) {
         const repoName = $button.data('repo');
         const $actionsCell = $button.closest('td');
         const $installButton = $actionsCell.find('.kiss-sbi-install-single');
+        const $row = $button.closest('tr');
+        const $statusCell = $row.find('.kiss-sbi-plugin-status');
 
         $button.prop('disabled', true).text('Checking...');
 
@@ -498,10 +503,16 @@ jQuery(document).ready(function($) {
             success: function(response) {
                 if (response.success && response.data.installed) {
                     const pluginData = response.data.data;
-                    if (pluginData.active) {
-                        $button.replaceWith('<span class="kiss-sbi-plugin-already-activated">Already Activated</span>');
-                    } else {
-                        $button.replaceWith(
+                    // Reflect status uniformly in the status cell
+                    $statusCell
+                        .html('<span class="kiss-sbi-plugin-yes">\u2713 Installed ' + (pluginData.active ? '(Active)' : '(Inactive)') + '</span>')
+                        .addClass('is-installed');
+
+                    // Remove the check button and install button, then show Activate only if inactive
+                    $button.remove();
+                    $installButton.remove();
+                    if (!pluginData.active) {
+                        $actionsCell.prepend(
                             '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' +
                             pluginData.plugin_file + '" data-repo="' + repoName + '">Activate →</button>'
                         );
@@ -509,6 +520,7 @@ jQuery(document).ready(function($) {
                 } else {
                     // Not installed - show install button and hide other inactive controls
                     $button.remove();
+                    $statusCell.removeClass('is-installed').empty();
                     $installButton.show().prop('disabled', false);
                 }
             },

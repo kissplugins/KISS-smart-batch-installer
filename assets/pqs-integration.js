@@ -169,12 +169,11 @@ function kissSbiUpdatePqsIndicator(state) {
                         .html('<span class="kiss-sbi-plugin-yes">\u2713 Installed ' + (match.isActive ? '(Active)' : '(Inactive)') + '</span>')
                         .addClass('is-installed');
 
-                    // Disable install actions
-                    $installButton.text('Installed').addClass('button-disabled').prop('disabled', true).show();
-
-                    // Add settings link if available
+                    // Remove install button; add Settings if available
                     if (match.settingsUrl) {
-                        $installButton.after(' <a href="' + match.settingsUrl + '" class="button button-small">Settings</a>');
+                        $installButton.replaceWith(' <a href="' + match.settingsUrl + '" class="button button-small">Settings</a>');
+                    } else {
+                        $installButton.remove();
                     }
 
                     // Disable checkbox to prevent batch install selection
