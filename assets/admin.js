@@ -11,6 +11,72 @@ jQuery(document).ready(function($) {
             try { console.debug.apply(console, ['[KISS SBI]'].concat([].slice.call(arguments))); } catch (e) {}
         }
     }
+    // Unified row state manager (feature-flagged)
+    window.RowStateManager = window.RowStateManager || (function(){
+        const api = {
+            states: new Map(),
+            updateRow(repoName, updates){
+                const current = this.states.get(repoName) || this.getDefaultState(repoName);
+                const next = Object.assign({}, current, updates);
+                this.states.set(repoName, next);
+                this.renderRow(repoName, next);
+            },
+            getDefaultState(repoName){
+                return { repoName, isPlugin: null, isInstalled: null, isActive: null, pluginFile: null, settingsUrl: null, checking: false, installing: false, error: null };
+            },
+            renderRow(repoName, state){
+                const $row = $('tr[data-repo="' + repoName + '"]');
+                if (!$row.length) return;
+                const $statusCell = $row.find('.kiss-sbi-plugin-status');
+                const $actionsCell = $row.find('td').last();
+                $statusCell.html(this.renderStatusCell(state));
+                // Keep legacy CSS hooks for other code paths
+                $statusCell.toggleClass('is-plugin', state.isPlugin === true);
+                $statusCell.toggleClass('is-installed', state.isInstalled === true);
+
+                $actionsCell.html(this.renderActionsCell(state));
+                $row.toggleClass('plugin-installed', state.isInstalled === true);
+                $row.toggleClass('plugin-checking', !!state.checking);
+                // Keep batch checkbox in sync
+                $row.find('.kiss-sbi-repo-checkbox').prop('disabled', state.isInstalled === true);
+            },
+            renderStatusCell(state){
+                if (state.checking) return '<span class="kiss-sbi-plugin-checking">Checking...</span>';
+                if (state.isInstalled === true){
+                    return '<span class="kiss-sbi-plugin-yes">\u2713 Installed ' + (state.isActive ? '(Active)' : '(Inactive)') + '</span>';
+                }
+                if (state.isPlugin === true){
+                    return '<span class="kiss-sbi-plugin-yes">\u2713 WordPress Plugin</span>';
+                }
+                if (state.isPlugin === false){
+                    return '<span class="kiss-sbi-plugin-no">\u2717 Not a Plugin</span>';
+                }
+                return '<button type="button" class="button button-small kiss-sbi-check-plugin" data-repo="' + state.repoName + '">Check</button>';
+            },
+            renderActionsCell(state){
+                // Note: SBI-own row is handled separately by PHP; do not interfere
+                if (state.installing) return '<button class="button button-small" disabled>Installing...</button>';
+                if (state.isInstalled === true){
+                    let html = '';
+                    if (state.isActive === false && state.pluginFile){
+                        html += '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' + state.pluginFile + '" data-repo="' + state.repoName + '">Activate →</button>';
+                    } else {
+                        html += '<span class="kiss-sbi-plugin-already-activated">Already Activated</span>';
+                    }
+                    if (state.settingsUrl){
+                        html += ' <a href="' + state.settingsUrl + '" class="button button-small">Settings</a>';
+                    }
+                    return html;
+                }
+                if (state.isPlugin === true){
+                    return '<button type="button" class="button button-small kiss-sbi-install-single" data-repo="' + state.repoName + '">Install</button>';
+                }
+                return '<button type="button" class="button button-small kiss-sbi-check-installed" data-repo="' + state.repoName + '">Check Status</button>';
+            }
+        };
+        return api;
+    })();
+
 
     // Initialize
     init();
@@ -19,9 +85,58 @@ jQuery(document).ready(function($) {
         bindEvents();
         updateBatchInstallButton();
 
-        // Queue all plugin checks instead of running them simultaneously
-        queueAllPluginChecks();
+        // Unified staged init per PROJECT-UNIFY: seed states, then check
+        try { initializeUnifiedRows(); } catch(e) { dbg('Unified init failed', e); }
     }
+        function initializeUnifiedRows(){
+            // Stage 1: defaults + checking flag
+            $('.wp-list-table tbody tr').each(function(){
+                const repo = $(this).data('repo'); if (!repo) return;
+                RowStateManager.updateRow(repo, { checking: true });
+            });
+
+            // Stage 2: PQS hints (if integration is present)
+            try {
+                if (window.KissSbiPQSIntegration && typeof window.KissSbiPQSIntegration.scanInstalledPlugins === 'function'){
+                    // Reuse PQS cache directly
+                    const raw = localStorage.getItem('pqs_plugin_cache') || '[]';
+                    let arr = []; try { arr = JSON.parse(raw); } catch(_){}
+                    if (Array.isArray(arr)){
+                        arr.forEach(function(plugin){
+                            const slug = (plugin.slug || '').toLowerCase();
+                            const name = (plugin.nameLower || plugin.name || '').toLowerCase();
+                            const variants = [];
+                            if (slug) variants.push(slug, slug.replace(/[^a-z0-9]/g,'-'), slug.replace(/[-_]/g,''));
+                            if (name) variants.push(name, name.replace(/[^a-z0-9]/g,'-'), name.replace(/[-_]/g,''));
+                            // Map variants back to row by matching row repoName variants
+                            $('.wp-list-table tbody tr').each(function(){
+                                const repo = ($(this).data('repo')||'').toString(); if (!repo) return;
+                                const lower = repo.toLowerCase();
+                                const repoVariants = [lower, lower.replace(/[^a-z0-9]/g,'-'), lower.replace(/[-_]/g,'')];
+                                for (let v of repoVariants){
+                                    if (variants.includes(v)){
+                                        RowStateManager.updateRow(repo, { isInstalled: true, isActive: !!plugin.isActive, isPlugin: true, settingsUrl: plugin.settingsUrl || null, checking: false });
+                                        break;
+                                    }
+                                }
+                            });
+                        });
+                    }
+                }
+            } catch(e) { dbg('PQS stage failed', e); }
+
+            // Stage 3: server-side install checks for each row, serialized to reduce load
+            const rows = $('.wp-list-table tbody tr').map(function(){ return ($(this).data('repo')||'').toString(); }).get();
+            let idx = 0;
+            function next(){ if (idx >= rows.length) return stage4(); checkInstalledFor(rows[idx++], next); }
+            next();
+
+            function stage4(){
+                // Stage 4: plugin header scan for unknowns
+                queueAllPluginChecks();
+            }
+        }
+
 
     function bindEvents() {
         // Checkbox events
@@ -226,6 +341,28 @@ jQuery(document).ready(function($) {
         });
     }
 
+    // Helper used by unified init to check install state and unify rendering
+    function checkInstalledFor(repoName, done){
+        const $row = $('tr[data-repo="' + repoName + '"]');
+        if (!$row.length){ if (done) done(); return; }
+        $.ajax({
+            url: kissSbiAjax.ajaxUrl,
+            type: 'POST',
+            data: { action: 'kiss_sbi_check_installed', nonce: kissSbiAjax.nonce, repo_name: repoName },
+            success: function(response){
+                if (response && response.success && response.data && response.data.installed && response.data.data){
+                    const d = response.data.data;
+                    RowStateManager.updateRow(repoName, { isInstalled: true, isActive: !!d.active, pluginFile: d.plugin_file || null, isPlugin: true, checking: false });
+                } else {
+                    RowStateManager.updateRow(repoName, { isInstalled: false, checking: false });
+                }
+            },
+            error: function(){ RowStateManager.updateRow(repoName, { error: 'check_failed', checking: false }); },
+            complete: function(){ if (done) done(); }
+        });
+    }
+
+
     function checkPlugin() {
         // For manual clicks, add to queue if not already processing
         if (!isProcessingQueue) {
@@ -254,24 +391,9 @@ jQuery(document).ready(function($) {
                 dbg('Scan response', response);
                 if (response && response.success) {
                     if (response.data && response.data.is_plugin) {
-                        // If we've already determined the plugin is installed, do not overwrite or re-show install controls
+                        // If we've already determined the plugin is installed, do not overwrite
                         if (!$statusCell.hasClass('is-installed')) {
-                            $statusCell.html('<span class="kiss-sbi-plugin-yes">✓ WordPress Plugin</span>')
-                                      .addClass('is-plugin');
-
-                            // Show and enable install button
-                            $row.find('.kiss-sbi-install-single').show().prop('disabled', false);
-
-                            // Show plugin info if available
-                            if (response.data.plugin_data && response.data.plugin_data.plugin_name) {
-                                const pluginName = response.data.plugin_data.plugin_name;
-                                const version = response.data.plugin_data.version;
-                                let tooltip = 'Plugin: ' + pluginName;
-                                if (version) {
-                                    tooltip += ' (v' + version + ')';
-                                }
-                                $statusCell.find('span').attr('title', tooltip);
-                            }
+                            RowStateManager.updateRow(repoName, { isPlugin: true, checking: false });
                         }
                     } else {
                         // Not a plugin or undetected; include details if provided
@@ -329,15 +451,11 @@ jQuery(document).ready(function($) {
             success: function(response) {
                 if (response.success) {
                     if (response.data.activated) {
-                        $button.remove();
+                        RowStateManager.updateRow(repoName, { isInstalled: true, isActive: true, pluginFile: response.data.plugin_file || null, isPlugin: true, checking: false, installing: false });
                         showSuccess('Plugin "' + repoName + '" installed and activated successfully.');
                     } else {
                         // Show activate button
-                        // Replace install button with Activate →
-                        $button.replaceWith(
-                            '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' +
-                            response.data.plugin_file + '" data-repo="' + repoName + '">Activate →</button>'
-                        );
+                        RowStateManager.updateRow(repoName, { isInstalled: true, isActive: false, pluginFile: response.data.plugin_file || null, isPlugin: true, checking: false, installing: false });
                         showSuccess('Plugin "' + repoName + '" installed successfully. Click "Activate →" to activate it.');
                     }
                 } else {
@@ -417,21 +535,11 @@ jQuery(document).ready(function($) {
             success: function(response) {
                 if (response.success) {
                     if (response.data.activated) {
+                        RowStateManager.updateRow(repoName, { isInstalled: true, isActive: true, pluginFile: response.data.plugin_file || null, installing: false, checking: false });
                         $statusSpan.text('Installed & Activated').removeClass('installing').addClass('success');
                     } else {
-                        $statusSpan.html('Installed - <button type="button" class="button button-small kiss-sbi-activate-plugin" data-plugin-file="' +
-                            response.data.plugin_file + '" data-repo="' + repoName + '">Activate →</button>').removeClass('installing').addClass('success');
-                    }
-
-                    // Update single install button if visible
-                    const $singleButton = $('.kiss-sbi-install-single[data-repo="' + repoName + '"]');
-                    if (response.data.activated) {
-                        $singleButton.remove();
-                    } else {
-                        $singleButton.replaceWith(
-                            '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' +
-                            response.data.plugin_file + '" data-repo="' + repoName + '">Activate →</button>'
-                        );
+                        RowStateManager.updateRow(repoName, { isInstalled: true, isActive: false, pluginFile: response.data.plugin_file || null, installing: false, checking: false });
+                        $statusSpan.text('Installed').removeClass('installing').addClass('success');
                     }
                 } else {
                     var extra = (response && response.data && response.data.logs) ? ' — details in console' : '';
@@ -503,25 +611,16 @@ jQuery(document).ready(function($) {
             success: function(response) {
                 if (response.success && response.data.installed) {
                     const pluginData = response.data.data;
-                    // Reflect status uniformly in the status cell
-                    $statusCell
-                        .html('<span class="kiss-sbi-plugin-yes">\u2713 Installed ' + (pluginData.active ? '(Active)' : '(Inactive)') + '</span>')
-                        .addClass('is-installed');
-
-                    // Remove the check button and install button, then show Activate only if inactive
-                    $button.remove();
-                    $installButton.remove();
-                    if (!pluginData.active) {
-                        $actionsCell.prepend(
-                            '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' +
-                            pluginData.plugin_file + '" data-repo="' + repoName + '">Activate →</button>'
-                        );
-                    }
+                    RowStateManager.updateRow(repoName, {
+                        isInstalled: true,
+                        isActive: !!pluginData.active,
+                        pluginFile: pluginData.plugin_file || null,
+                        isPlugin: true,
+                        checking: false
+                    });
                 } else {
-                    // Not installed - show install button and hide other inactive controls
-                    $button.remove();
-                    $statusCell.removeClass('is-installed').empty();
-                    $installButton.show().prop('disabled', false);
+                    // Not installed - update centralized state
+                    RowStateManager.updateRow(repoName, { isInstalled: false, isPlugin: null, checking: false });
                 }
             },
             error: function() {
@@ -552,7 +651,7 @@ jQuery(document).ready(function($) {
             },
             success: function(response) {
                 if (response.success) {
-                    $button.replaceWith('<span class="kiss-sbi-plugin-already-activated">Already Activated</span>');
+                    RowStateManager.updateRow(repoName, { isActive: true, isInstalled: true, pluginFile: pluginFile, checking: false });
                     showSuccess('Plugin "' + repoName + '" activated successfully.');
                 } else {
                     $button.prop('disabled', false).text(originalText);
