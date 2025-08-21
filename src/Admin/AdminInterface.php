@@ -72,6 +72,10 @@ class AdminInterface
             'sanitize_callback' => 'absint'
         ]);
 
+        register_setting('kiss_sbi_settings', 'kiss_sbi_use_v2', [
+            'sanitize_callback' => 'absint'
+        ]);
+
         add_settings_section(
             'kiss_sbi_main_settings',
             __('GitHub Organization Settings', 'kiss-smart-batch-installer'),
@@ -99,6 +103,14 @@ class AdminInterface
             'kiss_sbi_cache_duration',
             __('Cache Duration (seconds)', 'kiss-smart-batch-installer'),
             [$this, 'cacheDurationFieldCallback'],
+            'kiss_sbi_settings',
+            'kiss_sbi_main_settings'
+        );
+
+        add_settings_field(
+            'kiss_sbi_use_v2',
+            __('Use New Interface (Beta)', 'kiss-smart-batch-installer'),
+            [$this, 'useV2FieldCallback'],
             'kiss_sbi_settings',
             'kiss_sbi_main_settings'
         );
@@ -886,5 +898,13 @@ class AdminInterface
         $value = get_option('kiss_sbi_cache_duration', 3600);
         echo '<input type="number" name="kiss_sbi_cache_duration" value="' . esc_attr($value) . '" min="300" class="regular-text">';
         echo '<p class="description">' . __('How long to cache repository data (in seconds). Default: 3600 (1 hour).', 'kiss-smart-batch-installer') . '</p>';
+    }
+
+    public function useV2FieldCallback()
+    {
+        $value = get_option('kiss_sbi_use_v2', false);
+        echo '<input type="checkbox" name="kiss_sbi_use_v2" value="1" ' . checked($value, true, false) . '>';
+        echo '<p class="description">' . __('Enable the new WordPress-native interface.', 'kiss-smart-batch-installer') . ' ';
+        echo '<a href="admin.php?page=kiss-smart-batch-installer&kiss_sbi_v2=1" target="_blank">' . __('Preview', 'kiss-smart-batch-installer') . '</a></p>';
     }
 }

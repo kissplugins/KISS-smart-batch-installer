@@ -54,6 +54,7 @@ spl_autoload_register(function ($class) {
 class KissSmartBatchInstaller
 {
     private static $instance = null;
+    private $v2_plugin = null;
 
     public static function getInstance()
     {
@@ -89,13 +90,22 @@ class KissSmartBatchInstaller
 
     public function initializePlugin()
     {
-        if (is_admin()) {
-            new \KissSmartBatchInstaller\Admin\AdminInterface();
-        }
+        // Feature flag check
+        $use_v2 = get_option('kiss_sbi_use_v2', false) || defined('KISS_SBI_FORCE_V2');
 
-        new \KissSmartBatchInstaller\Core\GitHubScraper();
-        new \KissSmartBatchInstaller\Core\PluginInstaller();
-        new \KissSmartBatchInstaller\Core\SelfUpdater();
+        if ($use_v2) {
+            require_once KISS_SBI_PLUGIN_DIR . 'includes/bootstrap-v2.php';
+            $this->v2_plugin = new \KissSmartBatchInstaller\V2\Plugin();
+            $this->v2_plugin->init();
+        } else {
+            if (is_admin()) {
+                new \KissSmartBatchInstaller\Admin\AdminInterface();
+            }
+
+            new \KissSmartBatchInstaller\Core\GitHubScraper();
+            new \KissSmartBatchInstaller\Core\PluginInstaller();
+            new \KissSmartBatchInstaller\Core\SelfUpdater();
+        }
     }
 
     public function activate()
@@ -104,6 +114,7 @@ class KissSmartBatchInstaller
         add_option('kiss_sbi_github_org', '');
         add_option('kiss_sbi_cache_duration', 3600); // 1 hour
         add_option('kiss_sbi_repo_limit', 15);
+        add_option('kiss_sbi_use_v2', false);
 
         // Create plugin tables if needed (none for v1.0)
         flush_rewrite_rules();
