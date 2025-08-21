@@ -162,22 +162,28 @@ function kissSbiUpdatePqsIndicator(state) {
                 }
 
                 if (match) {
-                    const $statusCell = $row.find('.kiss-sbi-plugin-status');
-                    const $installButton = $row.find('.kiss-sbi-install-single');
-
-                    $statusCell
-                        .html('<span class="kiss-sbi-plugin-yes">\u2713 Installed ' + (match.isActive ? '(Active)' : '(Inactive)') + '</span>')
-                        .addClass('is-installed');
-
-                    // Remove install button; add Settings if available
-                    if (match.settingsUrl) {
-                        $installButton.replaceWith(' <a href="' + match.settingsUrl + '" class="button button-small">Settings</a>');
+                    // Use centralized RowStateManager to keep UI consistent
+                    if (window.RowStateManager && typeof window.RowStateManager.updateRow === 'function'){
+                        window.RowStateManager.updateRow(repoName, {
+                            isInstalled: true,
+                            isActive: !!match.isActive,
+                            isPlugin: true,
+                            settingsUrl: match.settingsUrl || ''
+                        });
                     } else {
-                        $installButton.remove();
+                        // Fallback: legacy DOM updates (should rarely happen)
+                        const $statusCell = $row.find('.kiss-sbi-plugin-status');
+                        const $installButton = $row.find('.kiss-sbi-install-single');
+                        $statusCell
+                            .html('<span class="kiss-sbi-plugin-yes">\u2713 Installed ' + (match.isActive ? '(Active)' : '(Inactive)') + '</span>')
+                            .addClass('is-installed');
+                        if (match.settingsUrl) {
+                            $installButton.replaceWith(' <a href="' + match.settingsUrl + '" class="button button-small">Settings</a>');
+                        } else {
+                            $installButton.remove();
+                        }
+                        $row.find('.kiss-sbi-repo-checkbox').prop('disabled', true);
                     }
-
-                    // Disable checkbox to prevent batch install selection
-                    $row.find('.kiss-sbi-repo-checkbox').prop('disabled', true);
                 }
             });
 

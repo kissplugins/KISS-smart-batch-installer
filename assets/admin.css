@@ -406,6 +406,16 @@
     opacity: 0.8;
 }
 
+
+/* Unified row state visuals per PROJECT-UNIFY */
+.wp-list-table tbody tr.plugin-checking {
+    background-color: #fff8e1; /* light amber */
+}
+.wp-list-table tbody tr.plugin-error {
+    background-color: #fdecea; /* light red */
+}
+.kiss-sbi-plugin-checking { color: #cc9a06; }
+
 .wp-list-table tbody tr.plugin-installed .kiss-sbi-repo-checkbox:disabled {
     opacity: 0.5;
     cursor: not-allowed;
