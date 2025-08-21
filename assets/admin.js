@@ -58,13 +58,25 @@ jQuery(document).ready(function($) {
                 if (state.installing) return '<button class="button button-small" disabled>Installing...</button>';
                 if (state.isInstalled === true){
                     let html = '';
+                    // Compute effective Settings URL (hardwire PQS settings if applicable)
+                    let effectiveSettingsUrl = state.settingsUrl || '';
+                    const isPqs = !!(state.repoName && /^(kiss-)?plugin(-)?quick(-)?search$/i.test(String(state.repoName).replace(/^kiss[- ]/i,'kiss-')));
+                    if (isPqs && !effectiveSettingsUrl){
+                        try {
+                            const baseAjax = (typeof kissSbiAjax !== 'undefined' && kissSbiAjax && kissSbiAjax.ajaxUrl) ? kissSbiAjax.ajaxUrl : (typeof ajaxurl === 'string' ? ajaxurl : '');
+                            effectiveSettingsUrl = baseAjax && baseAjax.indexOf('admin-ajax.php') !== -1 ? baseAjax.replace('admin-ajax.php','plugins.php?page=pqs-cache-status') : (window.location.origin + '/wp-admin/plugins.php?page=pqs-cache-status');
+                        } catch(_) {
+                            effectiveSettingsUrl = '/wp-admin/plugins.php?page=pqs-cache-status';
+                        }
+                    }
                     if (state.isActive === false && state.pluginFile){
                         html += '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' + state.pluginFile + '" data-repo="' + state.repoName + '">Activate →</button>';
                     } else {
-                        html += '<span class="kiss-sbi-plugin-already-activated">Already Activated</span>';
+                        const label = effectiveSettingsUrl ? 'Already Activated' : 'No Actions Available';
+                        html += '<span class="kiss-sbi-plugin-already-activated">' + label + '</span>';
                     }
-                    if (state.settingsUrl){
-                        html += ' <a href="' + state.settingsUrl + '" class="button button-small">Settings</a>';
+                    if (effectiveSettingsUrl){
+                        html += ' <a href="' + effectiveSettingsUrl + '" class="button button-small">Settings</a>';
                     }
                     return html;
                 }

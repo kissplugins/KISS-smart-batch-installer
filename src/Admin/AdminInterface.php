@@ -208,28 +208,17 @@ class AdminInterface
             $pagination = $result['pagination'];
         }
 
-        // If org is kissplugins, move SBI repo to the top and ensure PQS appears in the list
+        // If org is kissplugins, pin SBI first and PQS second (companions)
         if (!is_wp_error($repositories) && strtolower($github_org) === 'kissplugins') {
-            $top = [];
-            $rest = [];
-            $has_pqs = false;
+            $sbi = null; $pqs = null; $rest = [];
             foreach ($repositories as $r) {
-                if (strcasecmp($r['name'], 'KISS-Smart-Batch-Installer') === 0) {
-                    $top[] = $r;
-                } else {
-                    $rest[] = $r;
-                }
-                if (strcasecmp($r['name'], 'KISS-Plugin-Quick-Search') === 0) {
-                    $has_pqs = true;
-                }
+                $name = isset($r['name']) ? $r['name'] : '';
+                if (strcasecmp($name, 'KISS-Smart-Batch-Installer') === 0) { $sbi = $r; continue; }
+                if (strcasecmp($name, 'KISS-Plugin-Quick-Search') === 0) { $pqs = $r; continue; }
+                $rest[] = $r;
             }
-            if (!empty($top)) {
-                $repositories = array_merge($top, $rest);
-
-            }
-            // Pre-fill PQS if not present in the current page of results
-            if (!$has_pqs) {
-                $repositories[] = [
+            if ($pqs === null) {
+                $pqs = [
                     'name' => 'KISS-Plugin-Quick-Search',
                     'description' => __('Plugin Quick Search (helper for faster SBI detection)', 'kiss-smart-batch-installer'),
                     'language' => 'PHP',
@@ -238,6 +227,10 @@ class AdminInterface
                     'is_wordpress_plugin' => null
                 ];
             }
+            $new = [];
+            if ($sbi) { $new[] = $sbi; }
+            if ($pqs) { $new[] = $pqs; }
+            $repositories = array_merge($new, $rest);
         }
 
         ?>
