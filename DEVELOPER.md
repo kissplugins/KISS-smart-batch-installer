@@ -203,6 +203,26 @@ if (window.RowStateManager){
 }
 ```
 
+### Built-in quick-jump API and highlight CSS (added for integrations)
+
+SBI exposes a tiny global API you can call directly after your finder selects a plugin:
+
+- Function: `window.kissSbiFocusRowByKey(key)`
+  - `key` may be a repo name or plugin slug; SBI will try common variants to match a row
+  - Behavior: scrolls row into view, briefly highlights it, and focuses the checkbox for accessibility
+- Event: `document` event `kiss-sbi-focus-ready` is dispatched once the API is installed
+- CSS: `.kiss-sbi-highlight` adds a soft yellow background and WP-blue outline for ~1.6s
+
+Example usage from PQS:
+```js
+document.addEventListener('kiss-sbi-focus-ready', function(){
+  // After user selects an entry named selectedKey
+  window.kissSbiFocusRowByKey(selectedKey);
+});
+// Or call directly if you know SBI loaded already
+window.kissSbiFocusRowByKey('my-plugin');
+```
+
 
 ## Performance notes
 

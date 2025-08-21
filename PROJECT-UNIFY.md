@@ -1,5 +1,24 @@
 # UI/UX Improvements Strategy: Status Synchronization & User Experience
 
+## Recap for Aug 21, 2025
+
+### Summary
+Completed: Centralized state; unified rendering; staged init; quick-jump API + highlight. 
+
+Partial: PQS integration uses state manager indirectly (via unified init), but PQS glue still edits DOM; visual polish not fully matched. 
+
+Not yet: Duplicate-logic cleanup; unified “get row status” endpoint; additional CSS for .plugin-checking/.plugin-error; tests. 
+
+### Recommended minimal follow-ups to fully “complete” PROJECT-UNIFY
+Refactor pqs-integration.js to call RowStateManager.updateRow instead of manipulating DOM. 
+
+Add CSS for .plugin-checking and .plugin-error row states; optionally add subtle row transition. 
+
+Consolidate client-side status flows into a single updateRowStatus(repoName) that orchestrates checks
+
+Consider a unified ajaxGetRowStatus endpoint (optional, but aligns with the plan)
+Add quick smoke tests for RowStateManager rendering and staged init. 
+
 ## Problem Analysis
 
 ### Core Issues Identified

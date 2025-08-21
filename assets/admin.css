@@ -455,3 +455,16 @@
 }
 
 
+/* Row highlight for quick-jump integrations (e.g., PQS) */
+.wp-list-table tbody tr.kiss-sbi-highlight {
+    background-color: #fffbe6; /* soft yellow */
+    outline: 2px solid #0073aa; /* WP blue */
+    outline-offset: -2px;
+    animation: kiss-sbi-row-flash 1.2s ease-out 1;
+}
+@keyframes kiss-sbi-row-flash {
+    0% { box-shadow: 0 0 0 0 rgba(0,115,170,0.35); }
+    100% { box-shadow: 0 0 0 12px rgba(0,115,170,0); }
+}
+
+
