@@ -1,23 +1,40 @@
 # UI/UX Improvements Strategy: Status Synchronization & User Experience
 
-## Recap for Aug 21, 2025
+
+## High-level Phased Plan and Status
+
+- Phase 1: Core Infrastructure — Status: Completed (Aug 22, 2025)
+  - Implement RowStateManager (single source of truth)
+  - Refactor to unified row rendering (status + actions)
+  - Consolidate event handlers and keep legacy CSS hooks for compatibility
+
+- Phase 2: Data Loading Coordination — Status: Mostly Completed (Aug 22, 2025)
+  - Staged initialization in admin.js (seed → PQS hints → server checks → plugin scans)
+  - PQS integration refactored to use RowStateManager.updateRow exclusively
+  - Introduced unified AJAX endpoint kiss_sbi_get_row_status and adopted it for staged init and row checks
+  - Remaining: retire any residual uses of kiss_sbi_scan_plugins; small cleanup of duplicate/legacy paths
+
+- Phase 3: Visual Enhancements — Status: In Progress (Aug 22, 2025)
+  - Row state visuals present: .plugin-checking, .plugin-error, .plugin-installed
+  - Added smooth row transitions for clearer state changes
+  - Error states surfaced to UI and reflected in row class
+  - Remaining: minor polish (icons/messaging), broader tests (PHP for endpoint, JS beyond smoke tests)
+
+## Recap for Aug 22, 2025
 
 ### Summary
-Completed: Centralized state; unified rendering; staged init; quick-jump API + highlight. 
+Completed: Centralized state; unified rendering; staged init; quick-jump API + highlight; PQS glue refactored to RowStateManager; unified "get row status" AJAX endpoint; CSS transitions for row state changes; initial RowStateManager browser tests via Self Tests page.
 
-Partial: PQS integration uses state manager indirectly (via unified init), but PQS glue still edits DOM; visual polish not fully matched. 
+Partial: Client still calls legacy scan endpoint in some flows historically, but primary staged init and row checks now use unified endpoint. Additional visual polish could be added.
 
-Not yet: Duplicate-logic cleanup; unified “get row status” endpoint; additional CSS for .plugin-checking/.plugin-error; tests. 
+Not yet: Broader unit/integration coverage (PHP for ajaxGetRowStatus and JS beyond smoke tests); duplicate-logic cleanup in older code paths if any remain; optional removal of legacy scan endpoint once confident.
 
 ### Recommended minimal follow-ups to fully “complete” PROJECT-UNIFY
-Refactor pqs-integration.js to call RowStateManager.updateRow instead of manipulating DOM. 
-
-Add CSS for .plugin-checking and .plugin-error row states; optionally add subtle row transition. 
-
-Consolidate client-side status flows into a single updateRowStatus(repoName) that orchestrates checks
-
-Consider a unified ajaxGetRowStatus endpoint (optional, but aligns with the plan)
-Add quick smoke tests for RowStateManager rendering and staged init. 
+- Replace any remaining kiss_sbi_scan_plugins consumers with kiss_sbi_get_row_status or remove the old path
+- Add CSS micro-polish (e.g., subtle row transitions already added; could add iconography for errors)
+- Add PHPUnit tests for ajaxGetRowStatus happy-path and error cases; expand JS tests for RowStateManager
+- Optionally surface a single consolidated “refresh status” control that uses the unified endpoint across all rows
+- Add Self Test row that validates PQS Settings link visibility when PQS is detected as installed
 
 ## Problem Analysis
 
@@ -44,14 +61,14 @@ Create a single state manager that coordinates all status updates across differe
 // New centralized state management system
 const RowStateManager = {
     states: new Map(), // repo_name -> complete state object
-    
+
     updateRow(repoName, updates) {
         const current = this.states.get(repoName) || this.getDefaultState(repoName);
         const newState = { ...current, ...updates };
         this.states.set(repoName, newState);
         this.renderRow(repoName, newState);
     },
-    
+
     getDefaultState(repoName) {
         return {
             repoName,
@@ -77,19 +94,19 @@ Replace piecemeal DOM updates with complete row state rendering.
 renderRow(repoName, state) {
     const $row = $(`tr[data-repo="${repoName}"]`);
     if (!$row.length) return;
-    
+
     // Update plugin status cell
     const $statusCell = $row.find('.kiss-sbi-plugin-status');
     $statusCell.html(this.renderStatusCell(state));
-    
-    // Update actions cell  
+
+    // Update actions cell
     const $actionsCell = $row.find('td:last-child');
     $actionsCell.html(this.renderActionsCell(state));
-    
+
     // Update checkbox state
     const $checkbox = $row.find('.kiss-sbi-repo-checkbox');
     $checkbox.prop('disabled', state.isInstalled === true);
-    
+
     // Update row classes
     $row.toggleClass('plugin-installed', state.isInstalled === true);
     $row.toggleClass('plugin-checking', state.checking);
@@ -99,22 +116,22 @@ renderStatusCell(state) {
     if (state.checking) {
         return '<span class="kiss-sbi-plugin-checking">🔄 Checking...</span>';
     }
-    
+
     if (state.isInstalled === true) {
         const activeText = state.isActive ? '(Active)' : '(Inactive)';
         return `<span class="kiss-sbi-plugin-yes">✓ Installed ${activeText}</span>`;
     }
-    
+
     if (state.isPlugin === true) {
         return '<span class="kiss-sbi-plugin-yes">✓ WordPress Plugin</span>';
     }
-    
+
     if (state.isPlugin === false) {
         return '<span class="kiss-sbi-plugin-no">✗ Not a Plugin</span>';
     }
-    
+
     // Unknown state - show check button
-    return '<button type="button" class="button button-small kiss-sbi-check-plugin" data-repo="' + 
+    return '<button type="button" class="button button-small kiss-sbi-check-plugin" data-repo="' +
            state.repoName + '">Check</button>';
 }
 
@@ -122,11 +139,11 @@ renderActionsCell(state) {
     if (state.installing) {
         return '<button class="button button-small" disabled>Installing...</button>';
     }
-    
+
     if (state.isInstalled === true) {
         let html = '<span class="kiss-sbi-plugin-already-activated">Installed</span>';
         if (state.isActive === false) {
-            html = `<button type="button" class="button button-primary kiss-sbi-activate-plugin" 
+            html = `<button type="button" class="button button-primary kiss-sbi-activate-plugin"
                    data-plugin-file="${state.pluginFile}" data-repo="${state.repoName}">
                    Activate →</button>`;
         }
@@ -135,14 +152,14 @@ renderActionsCell(state) {
         }
         return html;
     }
-    
+
     if (state.isPlugin === true) {
-        return `<button type="button" class="button button-small kiss-sbi-install-single" 
+        return `<button type="button" class="button button-small kiss-sbi-install-single"
                data-repo="${state.repoName}">Install</button>`;
     }
-    
+
     // Not a plugin or unknown - show status check
-    return `<button type="button" class="button button-small kiss-sbi-check-installed" 
+    return `<button type="button" class="button button-small kiss-sbi-check-installed"
            data-repo="${state.repoName}">Check Status</button>`;
 }
 ```
@@ -162,21 +179,21 @@ const DataLoader = {
                 RowStateManager.updateRow(repoName, { checking: true });
             }
         });
-        
+
         // Stage 2: Load PQS data if available
         await this.loadPQSData();
-        
+
         // Stage 3: Load server-side installation status
         await this.loadInstallationStatus();
-        
+
         // Stage 4: Check plugin status for unknowns
         await this.loadPluginStatus();
     },
-    
+
     async loadPQSData() {
         const pqsData = this.getPQSCache();
         if (!pqsData) return;
-        
+
         pqsData.forEach(plugin => {
             const repoName = this.matchRepoToPlugin(plugin);
             if (repoName) {
@@ -306,7 +323,7 @@ function scanInstalledPlugins() { ... }
 async function updateRowStatus(repoName, force = false) {
     const state = RowStateManager.states.get(repoName);
     if (!force && state && !this.needsRefresh(state)) return;
-    
+
     // Single comprehensive check
     const result = await this.getCompleteStatus(repoName);
     RowStateManager.updateRow(repoName, result);
@@ -344,14 +361,14 @@ $(document).on('click', '.kiss-sbi-activate-plugin', function() {
 public function ajaxGetRowStatus() {
     $repo_name = sanitize_text_field($_POST['repo_name'] ?? '');
     $force = (bool) ($_POST['force'] ?? false);
-    
+
     $result = [
         'repo_name' => $repo_name,
         'is_plugin' => $this->isWordPressPlugin($repo_name),
         'is_installed' => $this->isPluginInstalled($repo_name),
         'server_time' => time()
     ];
-    
+
     wp_send_json_success($result);
 }
 ```

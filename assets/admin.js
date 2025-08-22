@@ -37,6 +37,7 @@ jQuery(document).ready(function($) {
                 $actionsCell.html(this.renderActionsCell(state));
                 $row.toggleClass('plugin-installed', state.isInstalled === true);
                 $row.toggleClass('plugin-checking', !!state.checking);
+                $row.toggleClass('plugin-error', !!state.error);
                 // Keep batch checkbox in sync
                 $row.find('.kiss-sbi-repo-checkbox').prop('disabled', state.isInstalled === true);
             },
@@ -140,11 +141,11 @@ jQuery(document).ready(function($) {
             // Stage 3: server-side install checks for each row, serialized to reduce load
             const rows = $('.wp-list-table tbody tr').map(function(){ return ($(this).data('repo')||'').toString(); }).get();
             let idx = 0;
-            function next(){ if (idx >= rows.length) return stage4(); checkInstalledFor(rows[idx++], next); }
+            function next(){ if (idx >= rows.length) return stage4(); updateRowStatus(rows[idx++], next); }
             next();
 
             function stage4(){
-                // Stage 4: plugin header scan for unknowns
+                // Stage 4: fall back to manual checks for any unknowns (still using unified endpoint)
                 queueAllPluginChecks();
             }
         }
@@ -337,6 +338,27 @@ jQuery(document).ready(function($) {
         $btn.prop('disabled', true).text('Clearing...');
         $.ajax({
             url: kissSbiAjax.ajaxUrl,
+    // Unified status fetch helper (PROJECT-UNIFY Phase 2)
+    function updateRowStatus(repoName, done){
+        const $row = $('tr[data-repo="' + repoName + '"]');
+        if (!$row.length){ if (typeof done === 'function') done(); return; }
+        $.ajax({
+            url: kissSbiAjax.ajaxUrl,
+            type: 'POST',
+            data: { action: 'kiss_sbi_get_row_status', nonce: kissSbiAjax.nonce, repo_name: repoName },
+            success: function(response){
+                if (response && response.success && response.data){
+                    const payload = response.data; payload.checking = false;
+                    RowStateManager.updateRow(repoName, payload);
+                } else {
+                    RowStateManager.updateRow(repoName, { checking:false, error:'status_failed' });
+                }
+            },
+            error: function(){ RowStateManager.updateRow(repoName, { checking:false, error:'status_failed' }); },
+            complete: function(){ if (typeof done === 'function') done(); }
+        });
+    }
+
             type: 'POST',
             data: { action: 'kiss_sbi_clear_cache', nonce: kissSbiAjax.nonce },
             success: function(resp){
@@ -360,16 +382,18 @@ jQuery(document).ready(function($) {
         $.ajax({
             url: kissSbiAjax.ajaxUrl,
             type: 'POST',
-            data: { action: 'kiss_sbi_check_installed', nonce: kissSbiAjax.nonce, repo_name: repoName },
+            data: { action: 'kiss_sbi_get_row_status', nonce: kissSbiAjax.nonce, repo_name: repoName },
             success: function(response){
-                if (response && response.success && response.data && response.data.installed && response.data.data){
-                    const d = response.data.data;
-                    RowStateManager.updateRow(repoName, { isInstalled: true, isActive: !!d.active, pluginFile: d.plugin_file || null, isPlugin: true, checking: false });
+                if (response && response.success && response.data){
+                    const payload = response.data;
+                    // Ensure checking is reset in UI
+                    payload.checking = false;
+                    RowStateManager.updateRow(repoName, payload);
                 } else {
-                    RowStateManager.updateRow(repoName, { isInstalled: false, checking: false });
+                    RowStateManager.updateRow(repoName, { checking: false, error: 'status_failed' });
                 }
             },
-            error: function(){ RowStateManager.updateRow(repoName, { error: 'check_failed', checking: false }); },
+            error: function(){ RowStateManager.updateRow(repoName, { error: 'status_failed', checking: false }); },
             complete: function(){ if (done) done(); }
         });
     }
@@ -395,32 +419,21 @@ jQuery(document).ready(function($) {
             url: kissSbiAjax.ajaxUrl,
             type: 'POST',
             data: {
-                action: 'kiss_sbi_scan_plugins',
+                action: 'kiss_sbi_get_row_status',
                 nonce: kissSbiAjax.nonce,
                 repo_name: repoName
             },
             success: function(response) {
-                dbg('Scan response', response);
-                if (response && response.success) {
-                    if (response.data && response.data.is_plugin) {
-                        // If we've already determined the plugin is installed, do not overwrite
-                        if (!$statusCell.hasClass('is-installed')) {
-                            RowStateManager.updateRow(repoName, { isPlugin: true, checking: false });
-                        }
-                    } else {
-                        // Not a plugin or undetected; include details if provided
-                        let detail = '';
-                        if (response.data && response.data.plugin_data && response.data.plugin_data.message) {
-                            detail = ' (' + response.data.plugin_data.message + ')';
-                        }
-                        $statusCell.html('<span class="kiss-sbi-plugin-no">✗ Not a Plugin</span>')
-                                  .removeClass('is-plugin');
-                    }
-
+                dbg('Status response', response);
+                if (response && response.success && response.data) {
+                    const payload = response.data;
+                    payload.checking = false;
+                    RowStateManager.updateRow(repoName, payload);
                     updateCheckedPlugins();
                     updateBatchInstallButton();
                 } else {
-                    $statusCell.html('<span class="kiss-sbi-plugin-error">Error checking</span>'); dbg('Scan failed', response);
+                    RowStateManager.updateRow(repoName, { checking: false, error: 'status_failed' });
+                    dbg('Status failed', response);
                 }
 
                 // Call callback when done
@@ -429,7 +442,7 @@ jQuery(document).ready(function($) {
                 }
             },
             error: function() {
-                $statusCell.html('<span class="kiss-sbi-plugin-error">Error checking</span>');
+                RowStateManager.updateRow(repoName, { checking: false, error: 'status_failed' });
 
                 // Call callback even on error
                 if (callback) {
@@ -616,27 +629,22 @@ jQuery(document).ready(function($) {
             url: kissSbiAjax.ajaxUrl,
             type: 'POST',
             data: {
-                action: 'kiss_sbi_check_installed',
+                action: 'kiss_sbi_get_row_status',
                 nonce: kissSbiAjax.nonce,
                 repo_name: repoName
             },
             success: function(response) {
-                if (response.success && response.data.installed) {
-                    const pluginData = response.data.data;
-                    RowStateManager.updateRow(repoName, {
-                        isInstalled: true,
-                        isActive: !!pluginData.active,
-                        pluginFile: pluginData.plugin_file || null,
-                        isPlugin: true,
-                        checking: false
-                    });
+                if (response && response.success && response.data) {
+                    const payload = response.data;
+                    payload.checking = false;
+                    RowStateManager.updateRow(repoName, payload);
                 } else {
-                    // Not installed - update centralized state
-                    RowStateManager.updateRow(repoName, { isInstalled: false, isPlugin: null, checking: false });
+                    RowStateManager.updateRow(repoName, { checking: false, error: 'status_failed' });
                 }
             },
             error: function() {
                 $button.prop('disabled', false).text('Check Status');
+                RowStateManager.updateRow(repoName, { checking: false, error: 'status_failed' });
             }
         });
     }

@@ -408,6 +408,8 @@
 
 
 /* Unified row state visuals per PROJECT-UNIFY */
+/* Smooth transitions for state changes */
+.wp-list-table tbody tr { transition: background-color 0.2s ease, outline-color 0.2s ease, box-shadow 0.2s ease; }
 .wp-list-table tbody tr.plugin-checking {
     background-color: #fff8e1; /* light amber */
 }

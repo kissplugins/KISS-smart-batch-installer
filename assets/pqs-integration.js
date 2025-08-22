@@ -170,20 +170,8 @@ function kissSbiUpdatePqsIndicator(state) {
                             isPlugin: true,
                             settingsUrl: match.settingsUrl || ''
                         });
-                    } else {
-                        // Fallback: legacy DOM updates (should rarely happen)
-                        const $statusCell = $row.find('.kiss-sbi-plugin-status');
-                        const $installButton = $row.find('.kiss-sbi-install-single');
-                        $statusCell
-                            .html('<span class="kiss-sbi-plugin-yes">\u2713 Installed ' + (match.isActive ? '(Active)' : '(Inactive)') + '</span>')
-                            .addClass('is-installed');
-                        if (match.settingsUrl) {
-                            $installButton.replaceWith(' <a href="' + match.settingsUrl + '" class="button button-small">Settings</a>');
-                        } else {
-                            $installButton.remove();
-                        }
-                        $row.find('.kiss-sbi-repo-checkbox').prop('disabled', true);
                     }
+                    // PROJECT-UNIFY: Avoid legacy direct DOM mutations to prevent desync
                 }
             });
 

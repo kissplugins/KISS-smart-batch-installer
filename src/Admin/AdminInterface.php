@@ -790,6 +790,16 @@ class AdminInterface
         // Inline script to evaluate PQS usage in the browser
         ?>
         <script>
+        // Enqueue RowStateManager tests into Self Tests page (browser-based)
+        (function(){
+            var s = document.createElement('script');
+            s.src = '<?php echo esc_js( KISS_SBI_PLUGIN_URL . 'assets/tests/row-state-tests.js' ); ?>';
+            s.async = true;
+            document.currentScript.parentNode.insertBefore(s, document.currentScript);
+        })();
+        </script>
+
+        <script>
         (function(){
             function setRow(pass, details){
                 var r = document.getElementById('test-pqs_used-result');

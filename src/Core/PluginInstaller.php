@@ -21,6 +21,8 @@ class PluginInstaller
         add_action('wp_ajax_kiss_sbi_activate_plugin', [$this, 'ajaxActivatePlugin']);
         add_action('wp_ajax_kiss_sbi_check_installed', [$this, 'ajaxCheckInstalled']);
         add_action('wp_ajax_kiss_sbi_refresh_repos', [$this, 'ajaxRefreshRepos']);
+        // Unified row status endpoint (PROJECT-UNIFY)
+        add_action('wp_ajax_kiss_sbi_get_row_status', [$this, 'ajaxGetRowStatus']);
     }
 
     /**
@@ -421,8 +423,62 @@ class PluginInstaller
 
         wp_send_json_success([
             'installed' => $result !== false,
-            'data' => $result
+            'data'      => $result
         ]);
+    }
+
+    /**
+     * AJAX handler: unified "get row status" for a repository
+     * Returns a normalized state suitable for RowStateManager.updateRow
+     * Shape: { repoName, isPlugin, isInstalled, isActive, pluginFile, settingsUrl, checking:false, installing:false, error:null }
+     */
+    public function ajaxGetRowStatus()
+    {
+        check_ajax_referer('kiss_sbi_admin_nonce', 'nonce');
+
+        if (!current_user_can('install_plugins')) {
+            wp_die(__('Insufficient permissions.', 'kiss-smart-batch-installer'));
+        }
+
+        $repo_name = sanitize_text_field($_POST['repo_name'] ?? '');
+        if (empty($repo_name)) {
+            wp_send_json_error(__('Repository name is required.', 'kiss-smart-batch-installer'));
+        }
+
+        // 1) Installed state
+        $installed = $this->isPluginInstalled($repo_name);
+
+        // 2) Plugin detection (only if not already confirmed installed)
+        $is_plugin = null;
+        $settings_url = '';
+        if ($installed !== false) {
+            $is_plugin = true;
+        } else {
+            // Defer to GitHubScraper::isWordPressPlugin for detection
+            $scraper = new \KissSmartBatchInstaller\Core\GitHubScraper();
+            $det = $scraper->isWordPressPlugin($repo_name);
+            if (!is_wp_error($det) && $det !== false) {
+                $is_plugin = true;
+            } elseif (is_wp_error($det)) {
+                $is_plugin = false; // treat as not a plugin when detection errors out
+            } else {
+                $is_plugin = false;
+            }
+        }
+
+        $payload = [
+            'repoName'    => $repo_name,
+            'isPlugin'    => $is_plugin,
+            'isInstalled' => $installed !== false,
+            'isActive'    => $installed !== false ? (bool)($installed['active'] ?? false) : null,
+            'pluginFile'  => $installed !== false ? ($installed['plugin_file'] ?? null) : null,
+            'settingsUrl' => $settings_url,
+            'checking'    => false,
+            'installing'  => false,
+            'error'       => null,
+        ];
+
+        wp_send_json_success($payload);
     }
 
     /**
