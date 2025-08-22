@@ -42,21 +42,27 @@ jQuery(document).ready(function($) {
                 $row.find('.kiss-sbi-repo-checkbox').prop('disabled', state.isInstalled === true);
             },
             renderStatusCell(state){
-                if (state.checking) return '<span class="kiss-sbi-plugin-checking">Checking...</span>';
+                if (state.checking) {
+                    return '<span class="kiss-sbi-plugin-checking" title="Checking status…"><span class="dashicons dashicons-update spin" aria-hidden="true"></span> Checking…</span>';
+                }
+                if (state && state.error) {
+                    return '<span class="kiss-sbi-plugin-error kiss-sbi-tooltip" title="' + String(state.error).replace(/"/g,'&quot;') + '"><span class="dashicons dashicons-warning" aria-hidden="true"></span> Error</span>' +
+                           ' <button type="button" class="button button-small kiss-sbi-check-installed" data-repo="' + state.repoName + '">Retry</button>';
+                }
                 if (state.isInstalled === true){
-                    return '<span class="kiss-sbi-plugin-yes">\u2713 Installed ' + (state.isActive ? '(Active)' : '(Inactive)') + '</span>';
+                    return '<span class="kiss-sbi-plugin-yes" title="Installed"><span class="dashicons dashicons-yes" aria-hidden="true"></span> Installed ' + (state.isActive ? '(Active)' : '(Inactive)') + '</span>';
                 }
                 if (state.isPlugin === true){
-                    return '<span class="kiss-sbi-plugin-yes">\u2713 WordPress Plugin</span>';
+                    return '<span class="kiss-sbi-plugin-yes" title="WordPress Plugin"><span class="dashicons dashicons-plugins-checked" aria-hidden="true"></span> WordPress Plugin</span>';
                 }
                 if (state.isPlugin === false){
-                    return '<span class="kiss-sbi-plugin-no">\u2717 Not a Plugin</span>';
+                    return '<span class="kiss-sbi-plugin-no" title="Not a WordPress plugin"><span class="dashicons dashicons-dismiss" aria-hidden="true"></span> Not a Plugin</span>';
                 }
-                return '<button type="button" class="button button-small kiss-sbi-check-plugin" data-repo="' + state.repoName + '">Check</button>';
+                return '<button type="button" class="button button-small kiss-sbi-check-plugin" data-repo="' + state.repoName + '"><span class="dashicons dashicons-search" aria-hidden="true"></span> Check</button>';
             },
             renderActionsCell(state){
                 // Note: SBI-own row is handled separately by PHP; do not interfere
-                if (state.installing) return '<button class="button button-small" disabled>Installing...</button>';
+                if (state.installing) return '<button class="button button-small" disabled><span class="dashicons dashicons-update spin" aria-hidden="true"></span> Installing…</button>';
                 if (state.isInstalled === true){
                     let html = '';
                     // Compute effective Settings URL (hardwire PQS settings if applicable)
@@ -71,20 +77,20 @@ jQuery(document).ready(function($) {
                         }
                     }
                     if (state.isActive === false && state.pluginFile){
-                        html += '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' + state.pluginFile + '" data-repo="' + state.repoName + '">Activate →</button>';
+                        html += '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' + state.pluginFile + '" data-repo="' + state.repoName + '"><span class="dashicons dashicons-yes" aria-hidden="true"></span> Activate →</button>';
                     } else {
                         const label = effectiveSettingsUrl ? 'Already Activated' : 'No Actions Available';
                         html += '<span class="kiss-sbi-plugin-already-activated">' + label + '</span>';
                     }
                     if (effectiveSettingsUrl){
-                        html += ' <a href="' + effectiveSettingsUrl + '" class="button button-small">Settings</a>';
+                        html += ' <a href="' + effectiveSettingsUrl + '" class="button button-small"><span class="dashicons dashicons-admin-generic" aria-hidden="true"></span> Settings</a>';
                     }
                     return html;
                 }
                 if (state.isPlugin === true){
-                    return '<button type="button" class="button button-small kiss-sbi-install-single" data-repo="' + state.repoName + '">Install</button>';
+                    return '<button type="button" class="button button-small kiss-sbi-install-single" data-repo="' + state.repoName + '"><span class="dashicons dashicons-download" aria-hidden="true"></span> Install</button>';
                 }
-                return '<button type="button" class="button button-small kiss-sbi-check-installed" data-repo="' + state.repoName + '">Check Status</button>';
+                return '<button type="button" class="button button-small kiss-sbi-check-installed" data-repo="' + state.repoName + '"><span class="dashicons dashicons-search" aria-hidden="true"></span> Check Status</button>';
             }
         };
         return api;
