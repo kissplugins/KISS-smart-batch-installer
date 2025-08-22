@@ -708,6 +708,55 @@ class AdminInterface
             'details' => $hasPqs ? __('Plugin Quick Search is active.', 'kiss-smart-batch-installer') : __('Plugin Quick Search is not active.', 'kiss-smart-batch-installer') . (strtolower($org) === 'kissplugins' ? ' — <button type="button" class="button button-small" id="kiss-sbi-install-pqs">' . esc_html__('Install PQS from main', 'kiss-smart-batch-installer') . '</button>' : ''),
         ];
 
+        // 6) ajaxGetRowStatus contract (server-side)
+        $ajaxContract = ['pass' => false, 'details' => ''];
+        $ajax_contract_repo = '';
+        try {
+            $r = $this->github_scraper->getRepositories(true, 1, 1);
+            if (!is_wp_error($r) && !empty($r['repositories'][0]['name'])) {
+                $ajax_contract_repo = (string) $r['repositories'][0]['name'];
+            }
+            if ($ajax_contract_repo) {
+                $resp = wp_remote_post(admin_url('admin-ajax.php'), [
+                    'timeout' => 15,
+                    'body' => [
+                        'action' => 'kiss_sbi_get_row_status',
+                        'nonce' => wp_create_nonce('kiss_sbi_admin_nonce'),
+                        'repo_name' => $ajax_contract_repo,
+                    ],
+                ]);
+                if (!is_wp_error($resp)) {
+                    $code = (int) wp_remote_retrieve_response_code($resp);
+                    $body = wp_remote_retrieve_body($resp);
+                    $json = json_decode($body, true);
+                    $ok = ($code >= 200 && $code < 300) && is_array($json) && !empty($json['success']) && !empty($json['data']) && is_array($json['data']);
+                    $keys = ['repoName','isPlugin','isInstalled','isActive','pluginFile','settingsUrl','checking','installing','error'];
+                    $hasKeys = $ok;
+                    if ($ok) {
+                        foreach ($keys as $k) { if (!array_key_exists($k, $json['data'])) { $hasKeys = false; break; } }
+                    }
+                    $ajaxContract['pass'] = $ok && $hasKeys;
+                    if ($ajaxContract['pass']) {
+                        $ajaxContract['details'] = sprintf(__('OK for %s (all keys present).', 'kiss-smart-batch-installer'), esc_html($ajax_contract_repo));
+                    } else {
+                        $ajaxContract['details'] = sprintf(__('Invalid response (HTTP %d).', 'kiss-smart-batch-installer'), $code);
+                        if (is_array($json) && isset($json['data']) && is_array($json['data'])) {
+                            $missing = [];
+                            foreach ($keys as $k) { if (!array_key_exists($k, $json['data'])) { $missing[] = $k; } }
+                            if (!empty($missing)) { $ajaxContract['details'] .= ' Missing: ' . implode(', ', $missing); }
+                        }
+                    }
+                } else {
+                    $ajaxContract['details'] = $resp->get_error_message();
+                }
+            } else {
+                $ajaxContract['details'] = __('No repository available to test.', 'kiss-smart-batch-installer');
+            }
+        } catch (\Throwable $e) {
+            $ajaxContract['details'] = $e->getMessage();
+        }
+        $results['ajax_status_contract'] = array_merge(['label' => __('ajaxGetRowStatus contract (server)', 'kiss-smart-batch-installer')], $ajaxContract);
+
         // 6) PQS cache usage (client-side verification)
         $results['pqs_used'] = [
             'label' => __('PQS Cache used', 'kiss-smart-batch-installer'),
@@ -787,9 +836,31 @@ class AdminInterface
             'document.dispatchEvent(new CustomEvent(\'kiss-sbi-self-tests-ready\',{detail:window.kissSbiSelfTests}));\n' .
             '})();</script>';
 
-        // Inline script to evaluate PQS usage in the browser
+        // Inline script to evaluate PQS usage in the browser + add Refresh button
         ?>
         <script>
+        // Add a "Refresh tests" button that re-runs in-browser checks and row-state tests
+        (function(){
+            function ensureButton(){
+                var container = document.querySelector('.wrap h1');
+                if (!container) return;
+                var btn = document.getElementById('kiss-sbi-refresh-tests');
+                if (btn) return;
+                btn = document.createElement('a');
+                btn.id = 'kiss-sbi-refresh-tests';
+                btn.className = 'button';
+                btn.style.marginLeft = '10px';
+                btn.textContent = 'Refresh tests';
+                btn.addEventListener('click', function(){
+                    try { document.dispatchEvent(new CustomEvent('kiss-sbi-self-tests-ready',{detail:window.kissSbiSelfTests})); } catch(_) {}
+                    try { runPqsProbe(); } catch(_) {}
+                    try { runAjaxContractProbe(); } catch(_) {}
+                });
+                container.parentNode.insertBefore(btn, container.nextSibling);
+            }
+            if (document.readyState === 'complete' || document.readyState === 'interactive') ensureButton(); else document.addEventListener('DOMContentLoaded', ensureButton);
+        })();
+
         // Enqueue RowStateManager tests into Self Tests page (browser-based)
         (function(){
             var s = document.createElement('script');
@@ -797,10 +868,56 @@ class AdminInterface
             s.async = true;
             document.currentScript.parentNode.insertBefore(s, document.currentScript);
         })();
-        </script>
 
-        <script>
-        (function(){
+        // Ajax contract probe (client-side quick ping)
+        function runAjaxContractProbe(){
+            var rowId = 'test-ajax_status_contract_client';
+            var row = document.getElementById(rowId);
+            if (!row) {
+                var tbody = document.querySelector('.widefat tbody');
+                if (!tbody) return;
+                row = document.createElement('tr');
+                row.id = rowId;
+                row.innerHTML = '<td>ajaxGetRowStatus contract (client)</td><td id="'+rowId+'-result"></td><td id="'+rowId+'-details"></td>';
+                tbody.appendChild(row);
+            }
+            var res = document.getElementById(rowId+'-result');
+            var det = document.getElementById(rowId+'-details');
+            res.innerHTML = '<span style="color:#666;">RUNNING</span>';
+            det.textContent = 'Pinging…';
+            try {
+                var repoCell = document.querySelector('.wp-list-table tbody tr td strong');
+                var repo = repoCell ? repoCell.textContent.trim() : '';
+                if (!repo) { res.innerHTML = '<span style="color:#dc3232;font-weight:600;">FAIL</span>'; det.textContent = 'No repo candidate on page.'; return; }
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', ajaxurl, true);
+                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
+                xhr.onload = function(){
+                    try {
+                        var json = JSON.parse(xhr.responseText||'{}');
+                        var ok = json && json.success && json.data && typeof json.data === 'object';
+                        var keys = ['repoName','isPlugin','isInstalled','isActive','pluginFile','settingsUrl','checking','installing','error'];
+                        var hasAll = ok;
+                        if (ok) { for (var i=0;i<keys.length;i++){ if(!(keys[i] in json.data)){ hasAll=false; break; } } }
+                        if (ok && hasAll) {
+                            res.innerHTML = '<span style="color:#46b450;font-weight:600;">PASS</span>';
+                            det.textContent = 'OK for ' + json.data.repoName;
+                        } else {
+                            res.innerHTML = '<span style="color:#dc3232;font-weight:600;">FAIL</span>';
+                            det.textContent = 'Invalid response';
+                        }
+                    } catch(e){ res.innerHTML = '<span style="color:#dc3232;font-weight:600;">FAIL</span>'; det.textContent = 'Exception parsing response.'; }
+                };
+                xhr.onerror = function(){ res.innerHTML = '<span style="color:#dc3232;font-weight:600;">FAIL</span>'; det.textContent = 'XHR error'; };
+                xhr.send('action=kiss_sbi_get_row_status&nonce=<?php echo esc_js(wp_create_nonce('kiss_sbi_admin_nonce')); ?>&repo_name=' + encodeURIComponent(repo));
+            } catch(e) {
+                res.innerHTML = '<span style="color:#dc3232;font-weight:600;">FAIL</span>';
+                det.textContent = e && e.message ? e.message : 'Error';
+            }
+        }
+
+        // PQS usage probe
+        function runPqsProbe(){
             function setRow(pass, details){
                 var r = document.getElementById('test-pqs_used-result');
                 var d = document.getElementById('test-pqs_used-details');
@@ -808,53 +925,20 @@ class AdminInterface
                 r.innerHTML = pass ? '<span style="color:#46b450;font-weight:600;">PASS</span>' : '<span style="color:#dc3232;font-weight:600;">FAIL</span>';
                 d.textContent = details;
             }
-            function run(){
-                try{
-                    var raw = localStorage.getItem('pqs_plugin_cache');
-                    var len = 0; try { var arr = JSON.parse(raw||'[]'); len = Array.isArray(arr)?arr.length:0; } catch(e) {}
-                    var status = (typeof window.pqsCacheStatus === 'function') ? window.pqsCacheStatus() : (len > 0 ? 'unknown' : 'missing');
-                    var used = (status === 'fresh') || (status === 'unknown' && len > 0);
-                    var detail = 'status=' + status + ', entries=' + len + (status==='unknown' ? ' (via localStorage)' : '');
-                    setRow(!!used, detail);
-                }catch(e){
-                    setRow(false, 'Error: ' + (e && e.message ? e.message : e));
-                }
-            }
-            if (document.readyState === 'complete' || document.readyState === 'interactive') run();
-            else document.addEventListener('DOMContentLoaded', run);
-        })();
-            // Handler to install PQS when not installed and org is kissplugins
-            (function(){
-                function onClick(){
-                    var btn = document.getElementById('kiss-sbi-install-pqs');
-                    if (!btn) return;
-                    btn.addEventListener('click', function(){
-                        if(!confirm('Install KISS Plugin Quick Search from main?')) return;
-                        var original = btn.textContent;
-                        btn.disabled = true; btn.textContent = 'Installing...';
-                        var xhr = new XMLHttpRequest();
-                        xhr.open('POST', ajaxurl, true);
-                        xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
-                        xhr.onload = function(){
-                            try {
-                                var resp = JSON.parse(xhr.responseText||'{}');
-                                if (resp && resp.success) {
-                                    btn.outerHTML = '<span>Installed & Activated</span>';
-                                } else {
-                                    alert('Install failed: ' + (resp && resp.data ? resp.data : 'Unknown error'));
-                                    btn.disabled = false; btn.textContent = original;
-                                }
-                            } catch(e) {
-                                alert('Install failed.'); btn.disabled=false; btn.textContent=original;
-                            }
-                        };
-                        xhr.onerror = function(){ alert('Install failed.'); btn.disabled=false; btn.textContent=original; };
-                        xhr.send('action=kiss_sbi_install_plugin&nonce=<?php echo esc_js(wp_create_nonce('kiss_sbi_admin_nonce')); ?>&repo_name=' + encodeURIComponent('KISS-Plugin-Quick-Search') + '&activate=1');
-                    });
-                }
-                if (document.readyState === 'complete' || document.readyState === 'interactive') onClick(); else document.addEventListener('DOMContentLoaded', onClick);
-            })();
+            try{
+                var raw = localStorage.getItem('pqs_plugin_cache');
+                var len = 0; try { var arr = JSON.parse(raw||'[]'); len = Array.isArray(arr)?arr.length:0; } catch(e) {}
+                var status = (typeof window.pqsCacheStatus === 'function') ? window.pqsCacheStatus() : (len > 0 ? 'unknown' : 'missing');
+                var used = (status === 'fresh') || (status === 'unknown' && len > 0);
+                var detail = 'status=' + status + ', entries=' + len + (status==='unknown' ? ' (via localStorage)' : '');
+                setRow(!!used, detail);
+            }catch(e){ setRow(false, 'Error: ' + (e && e.message ? e.message : e)); }
+        }
 
+        (function(){
+            if (document.readyState === 'complete' || document.readyState === 'interactive') { runPqsProbe(); runAjaxContractProbe(); }
+            else document.addEventListener('DOMContentLoaded', function(){ runPqsProbe(); runAjaxContractProbe(); });
+        })();
         </script>
         <?php
         echo '</div>';

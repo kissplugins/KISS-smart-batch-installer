@@ -14,11 +14,11 @@
   - Introduced unified AJAX endpoint kiss_sbi_get_row_status and adopted it for staged init and row checks
   - Cleanup done: removed kiss_sbi_scan_plugins endpoint and references
 
-- Phase 3: Visual Enhancements — Status: In Progress (Aug 22, 2025)
+- Phase 3: Visual Enhancements — Status: Completed (Aug 22, 2025)
   - Row state visuals present: .plugin-checking, .plugin-error, .plugin-installed
-  - Added smooth row transitions for clearer state changes
-  - Error states surfaced to UI and reflected in row class
-  - Remaining: minor polish (icons/messaging), broader tests (PHP for endpoint, JS beyond smoke tests)
+  - Smooth row transitions for clearer state changes
+  - Error states surfaced to UI and reflected in row class with Retry action and dashicons
+  - Self Tests page exposes in-browser refresh, PQS probe, and ajaxGetRowStatus contract checks (server + client)
 
 ## Recap for Aug 22, 2025
 
