@@ -141,7 +141,7 @@ jQuery(document).ready(function($) {
             // Stage 3: server-side install checks for each row, serialized to reduce load
             const rows = $('.wp-list-table tbody tr').map(function(){ return ($(this).data('repo')||'').toString(); }).get();
             let idx = 0;
-            function next(){ if (idx >= rows.length) return stage4(); updateRowStatus(rows[idx++], next); }
+            function next(){ if (idx >= rows.length) return stage4(); checkInstalledFor(rows[idx++], next); }
             next();
 
             function stage4(){
@@ -338,26 +338,7 @@ jQuery(document).ready(function($) {
         $btn.prop('disabled', true).text('Clearing...');
         $.ajax({
             url: kissSbiAjax.ajaxUrl,
-    // Unified status fetch helper (PROJECT-UNIFY Phase 2)
-    function updateRowStatus(repoName, done){
-        const $row = $('tr[data-repo="' + repoName + '"]');
-        if (!$row.length){ if (typeof done === 'function') done(); return; }
-        $.ajax({
-            url: kissSbiAjax.ajaxUrl,
-            type: 'POST',
-            data: { action: 'kiss_sbi_get_row_status', nonce: kissSbiAjax.nonce, repo_name: repoName },
-            success: function(response){
-                if (response && response.success && response.data){
-                    const payload = response.data; payload.checking = false;
-                    RowStateManager.updateRow(repoName, payload);
-                } else {
-                    RowStateManager.updateRow(repoName, { checking:false, error:'status_failed' });
-                }
-            },
-            error: function(){ RowStateManager.updateRow(repoName, { checking:false, error:'status_failed' }); },
-            complete: function(){ if (typeof done === 'function') done(); }
-        });
-    }
+
 
             type: 'POST',
             data: { action: 'kiss_sbi_clear_cache', nonce: kissSbiAjax.nonce },

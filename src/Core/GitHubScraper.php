@@ -22,7 +22,7 @@ class GitHubScraper
 
         // AJAX handlers
         add_action('wp_ajax_kiss_sbi_refresh_repos', [$this, 'ajaxRefreshRepositories']);
-        add_action('wp_ajax_kiss_sbi_scan_plugins', [$this, 'ajaxScanForPlugins']);
+        // Deprecated: kiss_sbi_scan_plugins (replaced by kiss_sbi_get_row_status)
         add_action('wp_ajax_kiss_sbi_clear_cache', [$this, 'ajaxClearCache']);
     }
 
@@ -772,37 +772,7 @@ class GitHubScraper
     }
 
     /**
-     * AJAX handler for scanning plugins
+     * Deprecated: ajaxScanForPlugins removed in favor of unified kiss_sbi_get_row_status.
+     * This method is intentionally removed for a clean slate.
      */
-    public function ajaxScanForPlugins()
-    {
-        check_ajax_referer('kiss_sbi_admin_nonce', 'nonce');
-
-        if (!current_user_can('install_plugins')) {
-            wp_die(__('Insufficient permissions.', 'kiss-smart-batch-installer'));
-        }
-
-        $repo_name = sanitize_text_field($_POST['repo_name'] ?? '');
-
-        if (empty($repo_name)) {
-            wp_send_json_error(__('Repository name is required.', 'kiss-smart-batch-installer'));
-        }
-
-        $plugin_data = $this->isWordPressPlugin($repo_name);
-
-        if (is_wp_error($plugin_data)) {
-            wp_send_json_success([
-                'is_plugin' => false,
-                'plugin_data' => [
-                    'message' => $plugin_data->get_error_message(),
-                    'code' => $plugin_data->get_error_code()
-                ]
-            ]);
-        } else {
-            wp_send_json_success([
-                'is_plugin' => $plugin_data !== false,
-                'plugin_data' => $plugin_data
-            ]);
-        }
-    }
 }

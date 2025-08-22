@@ -32,12 +32,11 @@ Namespaces live under KissSmartBatchInstaller\.
 
 - src/Core/GitHubScraper.php
   - Scrapes GitHub org repos and caches the result (transients)
-  - AJAX: `kiss_sbi_refresh_repos`, `kiss_sbi_clear_cache`, `kiss_sbi_scan_plugins`
-    - `kiss_sbi_scan_plugins` inspects the repo for WP plugin headers (no install)
+  - AJAX: `kiss_sbi_refresh_repos`, `kiss_sbi_clear_cache`
 
 - src/Core/PluginInstaller.php
   - Installs/activates plugins using WordPress core Plugin_Upgrader
-  - AJAX: `kiss_sbi_install_plugin`, `kiss_sbi_batch_install`, `kiss_sbi_activate_plugin`, `kiss_sbi_check_installed`
+  - AJAX: `kiss_sbi_install_plugin`, `kiss_sbi_batch_install`, `kiss_sbi_activate_plugin`, `kiss_sbi_check_installed`, `kiss_sbi_get_row_status`
 
 - src/Core/SelfUpdater.php
   - Updates SBI itself from main.zip
@@ -81,8 +80,8 @@ Tip: To detect the SBI page, check for `page=kiss-smart-batch-installer` in the 
   - Initialization lifecycle (`initializeUnifiedRows`):
     1) Stage 1 — Seed all rows with `checking: true`
     2) Stage 2 — If PQS is present or a PQS cache is found in localStorage, mark installed rows optimistically
-    3) Stage 3 — Serialized server checks (`kiss_sbi_check_installed`) per row
-    4) Stage 4 — Queue “plugin header” scans (`kiss_sbi_scan_plugins`) for unknown rows
+    3) Stage 3 — Serialized server checks via unified `kiss_sbi_get_row_status` per row
+    4) Stage 4 — Queue additional “Check” actions (still calling unified endpoint) for any unknowns
   - Queue for “Check” actions to throttle network load
   - Single and batch install flows (`kiss_sbi_install_plugin`), plus activate
 
@@ -96,13 +95,8 @@ Tip: To detect the SBI page, check for `page=kiss-smart-batch-installer` in the 
 
 All endpoints require the localized `kissSbiAjax.nonce` and standard WP capabilities.
 
-- POST `action=kiss_sbi_check_installed&repo_name=RepoName`
-  - Response: `{ success: true, data: { installed: bool, plugin_file: string, active: bool, plugin_data: object } | false, installed: bool }`
-  - Note: The PHP always `wp_send_json_success(...)`; check `installed` field inside `data` or at top level.
-
-- POST `action=kiss_sbi_scan_plugins&repo_name=RepoName`
-  - Detects if the repo looks like a WP plugin by reading headers
-  - Response: `{ success: true, data: { is_plugin: bool, plugin_data: {... or message/code on error} } }`
+- POST `action=kiss_sbi_get_row_status&repo_name=RepoName`
+  - Returns a normalized state for RowStateManager rendering: `{ repoName, isPlugin, isInstalled, isActive, pluginFile, settingsUrl, checking:false, installing:false, error:null }`
 
 - POST `action=kiss_sbi_install_plugin&repo_name=RepoName&activate=0|1`
   - Installs from `https://github.com/{org}/{repo}/archive/refs/heads/main.zip` via Plugin_Upgrader

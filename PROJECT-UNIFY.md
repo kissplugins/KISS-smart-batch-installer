@@ -8,11 +8,11 @@
   - Refactor to unified row rendering (status + actions)
   - Consolidate event handlers and keep legacy CSS hooks for compatibility
 
-- Phase 2: Data Loading Coordination — Status: Mostly Completed (Aug 22, 2025)
-  - Staged initialization in admin.js (seed → PQS hints → server checks → plugin scans)
+- Phase 2: Data Loading Coordination — Status: Completed (Aug 22, 2025)
+  - Staged initialization in admin.js (seed → PQS hints → server checks)
   - PQS integration refactored to use RowStateManager.updateRow exclusively
   - Introduced unified AJAX endpoint kiss_sbi_get_row_status and adopted it for staged init and row checks
-  - Remaining: retire any residual uses of kiss_sbi_scan_plugins; small cleanup of duplicate/legacy paths
+  - Cleanup done: removed kiss_sbi_scan_plugins endpoint and references
 
 - Phase 3: Visual Enhancements — Status: In Progress (Aug 22, 2025)
   - Row state visuals present: .plugin-checking, .plugin-error, .plugin-installed
