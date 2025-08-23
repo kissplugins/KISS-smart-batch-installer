@@ -149,6 +149,7 @@ class AdminInterface
             'nonce' => wp_create_nonce('kiss_sbi_admin_nonce'),
             'debug' => (bool) apply_filters('kiss_sbi_debug', true),
             'hasPQS' => (bool) $has_pqs,
+            'org' => (string) get_option('kiss_sbi_github_org', ''),
             'strings' => [
                 'installing' => __('Installing...', 'kiss-smart-batch-installer'),
                 'installed' => __('Installed', 'kiss-smart-batch-installer'),

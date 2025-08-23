@@ -30,11 +30,10 @@ Partial: Client still calls legacy scan endpoint in some flows historically, but
 Not yet: Broader unit/integration coverage (PHP for ajaxGetRowStatus and JS beyond smoke tests); duplicate-logic cleanup in older code paths if any remain; optional removal of legacy scan endpoint once confident.
 
 ### Recommended minimal follow-ups to fully “complete” PROJECT-UNIFY
-- Replace any remaining kiss_sbi_scan_plugins consumers with kiss_sbi_get_row_status or remove the old path
-- Add CSS micro-polish (e.g., subtle row transitions already added; could add iconography for errors)
-- Add PHPUnit tests for ajaxGetRowStatus happy-path and error cases; expand JS tests for RowStateManager
-- Optionally surface a single consolidated “refresh status” control that uses the unified endpoint across all rows
-- Add Self Test row that validates PQS Settings link visibility when PQS is detected as installed
+- Client-side row-state cache implemented and hydrated on load; cleared on Refresh/clear-cache
+- Added Self Tests for ajaxGetRowStatus (server + client) and an in-page Refresh tests button
+- Consider PHPUnit for deeper server assertions and Jest-like setup for broader JS if needed
+- Optional: single consolidated “refresh status” control for all rows (future polish)
 
 ## Problem Analysis
 

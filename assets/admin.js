@@ -11,6 +11,14 @@ jQuery(document).ready(function($) {
             try { console.debug.apply(console, ['[KISS SBI]'].concat([].slice.call(arguments))); } catch (e) {}
         }
     }
+    // Light client cache for row states scoped by org
+    const STATE_CACHE_KEY = (function(){ try { return 'kiss_sbi_row_states_' + (kissSbiAjax && kissSbiAjax.org ? String(kissSbiAjax.org).toLowerCase() : 'default'); } catch(_) { return 'kiss_sbi_row_states_default'; } })();
+    const RowStateCache = {
+        load(){ try { return JSON.parse(localStorage.getItem(STATE_CACHE_KEY) || '{}'); } catch(_) { return {}; } },
+        save(states){ try { localStorage.setItem(STATE_CACHE_KEY, JSON.stringify(states||{})); } catch(_){} },
+        clear(){ try { localStorage.removeItem(STATE_CACHE_KEY); } catch(_){} }
+    };
+
     // Unified row state manager (feature-flagged)
     window.RowStateManager = window.RowStateManager || (function(){
         const api = {
@@ -19,6 +27,10 @@ jQuery(document).ready(function($) {
                 const current = this.states.get(repoName) || this.getDefaultState(repoName);
                 const next = Object.assign({}, current, updates);
                 this.states.set(repoName, next);
+                // persist to cache (only serializable plain object)
+                try {
+                    const obj = {}; this.states.forEach((v,k)=>{ obj[k]=v; }); RowStateCache.save(obj);
+                } catch(_){ }
                 this.renderRow(repoName, next);
             },
             getDefaultState(repoName){
@@ -108,10 +120,20 @@ jQuery(document).ready(function($) {
         try { initializeUnifiedRows(); } catch(e) { dbg('Unified init failed', e); }
     }
         function initializeUnifiedRows(){
-            // Stage 1: defaults + checking flag
+            // Stage 0: hydrate from client cache (instant render)
+            try {
+                const cached = RowStateCache.load();
+                if (cached && typeof cached === 'object'){
+                    Object.keys(cached).forEach(function(repo){ RowStateManager.updateRow(repo, cached[repo]); });
+                }
+            } catch(e){ dbg('Cache hydrate failed', e); }
+
+            // Stage 1: defaults + checking flag for visible rows not in cache
             $('.wp-list-table tbody tr').each(function(){
                 const repo = $(this).data('repo'); if (!repo) return;
-                RowStateManager.updateRow(repo, { checking: true });
+                if (!RowStateManager.states.has(repo)) {
+                    RowStateManager.updateRow(repo, { checking: true });
+                }
             });
 
             // Stage 2: PQS hints (if integration is present)
@@ -312,6 +334,9 @@ jQuery(document).ready(function($) {
         dbg('Refresh Repositories clicked');
         $button.prop('disabled', true).text(kissSbiAjax.strings.loading || 'Loading...');
 
+        // Clear client cache so a full rescan happens after refresh
+        try { RowStateCache.clear(); } catch(_){ }
+
         $.ajax({
             url: kissSbiAjax.ajaxUrl,
             type: 'POST',
@@ -342,10 +367,9 @@ jQuery(document).ready(function($) {
         const original = $btn.text();
         dbg('Clear Cache clicked');
         $btn.prop('disabled', true).text('Clearing...');
+        try { RowStateCache.clear(); } catch(_){ }
         $.ajax({
             url: kissSbiAjax.ajaxUrl,
-
-
             type: 'POST',
             data: { action: 'kiss_sbi_clear_cache', nonce: kissSbiAjax.nonce },
             success: function(resp){
