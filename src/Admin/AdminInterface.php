@@ -144,12 +144,18 @@ class AdminInterface
             KISS_SBI_VERSION
         );
 
+        // Default unified cell flag: enable unified cell by default (can be overridden via filter)
+        $unified_default = true;
+
+        $unified_cell_enabled = (bool) apply_filters('kiss_sbi_unified_cell', $unified_default);
+
         wp_localize_script('kiss-sbi-admin', 'kissSbiAjax', [
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('kiss_sbi_admin_nonce'),
             'debug' => (bool) apply_filters('kiss_sbi_debug', true),
             'hasPQS' => (bool) $has_pqs,
             'org' => (string) get_option('kiss_sbi_github_org', ''),
+            'unifiedCell' => $unified_cell_enabled,
             'strings' => [
                 'installing' => __('Installing...', 'kiss-smart-batch-installer'),
                 'installed' => __('Installed', 'kiss-smart-batch-installer'),
@@ -195,6 +201,10 @@ class AdminInterface
             return;
         }
 
+        // Unified cell flag (server-side) for CSS column hiding
+        $unified_default = true;
+        $unified_cell_enabled = (bool) apply_filters('kiss_sbi_unified_cell', $unified_default);
+
         // Handle pagination
         $current_page = max(1, (int) ($_GET['paged'] ?? 1));
         $per_page = 15;
@@ -235,6 +245,8 @@ class AdminInterface
         }
 
         ?>
+
+
         <div class="wrap">
             <h1><?php _e('KISS Smart Batch Installer', 'kiss-smart-batch-installer'); ?></h1>
 
@@ -380,7 +392,6 @@ class AdminInterface
                         </td>
                         <td>
                             <?php if ($is_sbi_repo): ?>
-                                <span class="kiss-sbi-plugin-already-activated"><?php _e('Already Activated', 'kiss-smart-batch-installer'); ?></span>
                                 <button type="button" class="button button-primary kiss-sbi-self-update" data-repo="<?php echo esc_attr($repo['name']); ?>" style="margin-left:8px; display:none;">
                                     <?php _e('Update', 'kiss-smart-batch-installer'); ?>
                                 </button>

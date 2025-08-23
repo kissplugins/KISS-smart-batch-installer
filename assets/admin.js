@@ -1,6 +1,13 @@
 jQuery(document).ready(function($) {
     'use strict';
 
+    // Ensure unified-hide class is present early to hide Actions column via CSS
+    try {
+        if (window.kissSbiAjax && kissSbiAjax.unifiedCell) {
+            document.body.classList.add('kiss-sbi-unified-hide-actions');
+        }
+    } catch (_) {}
+
     let checkedPlugins = new Set();
     let pluginCheckQueue = [];
     let isProcessingQueue = false;
@@ -46,7 +53,12 @@ jQuery(document).ready(function($) {
                 $statusCell.toggleClass('is-plugin', state.isPlugin === true);
                 $statusCell.toggleClass('is-installed', state.isInstalled === true);
 
-                $actionsCell.html(this.renderActionsCell(state));
+                if (kissSbiAjax && kissSbiAjax.unifiedCell) {
+                    // Unified mode: hide/empty legacy Actions column to avoid duplication
+                    $actionsCell.empty();
+                } else {
+                    $actionsCell.html(this.renderActionsCell(state));
+                }
                 $row.toggleClass('plugin-installed', state.isInstalled === true);
                 $row.toggleClass('plugin-checking', !!state.checking);
                 $row.toggleClass('plugin-error', !!state.error);
@@ -54,6 +66,58 @@ jQuery(document).ready(function($) {
                 $row.find('.kiss-sbi-repo-checkbox').prop('disabled', state.isInstalled === true);
             },
             renderStatusCell(state){
+                // Unified cell rendering when feature flag is on
+                if (kissSbiAjax && kissSbiAjax.unifiedCell) {
+                    const parts = [];
+                    // Status pill
+                    if (state.checking) {
+                        parts.push('<div class="kiss-sbi-status-pill" aria-live="polite"><span class="dashicons dashicons-update spin"></span> Checking…</div>');
+                    } else if (state && state.error) {
+                        parts.push('<div class="kiss-sbi-status-pill is-error kiss-sbi-tooltip" title="' + String(state.error).replace(/"/g,'&quot;') + '"><span class="dashicons dashicons-warning"></span> Error</div>');
+                    } else if (state.isInstalled === true) {
+                        const act = state.isActive ? '(Active)' : '(Inactive)';
+                        parts.push('<div class="kiss-sbi-status-pill is-installed"><span class="dashicons dashicons-yes"></span> Installed ' + act + '</div>');
+                    } else if (state.isPlugin === true) {
+                        parts.push('<div class="kiss-sbi-status-pill is-plugin"><span class="dashicons dashicons-plugins-checked"></span> WordPress Plugin</div>');
+                    } else if (state.isPlugin === false) {
+                        parts.push('<div class="kiss-sbi-status-pill is-not-plugin"><span class="dashicons dashicons-dismiss"></span> Not a Plugin</div>');
+                    } else {
+                        parts.push('<div class="kiss-sbi-status-pill is-unknown"><span class="dashicons dashicons-info"></span> Unknown</div>');
+                    }
+                    // Actions row
+                    let actions = '';
+                    if (state.installing) {
+                        actions = '<button class="button button-small" disabled><span class="dashicons dashicons-update spin"></span> Installing…</button>';
+                    } else if (state.isInstalled === true) {
+                        let effectiveSettingsUrl = state.settingsUrl || '';
+                        const isPqs = !!(state.repoName && /^(kiss-)?plugin(-)?quick(-)?search$/i.test(String(state.repoName).replace(/^kiss[- ]/i,'kiss-')));
+                        if (isPqs && !effectiveSettingsUrl){
+                            try {
+                                const baseAjax = (typeof kissSbiAjax !== 'undefined' && kissSbiAjax && kissSbiAjax.ajaxUrl) ? kissSbiAjax.ajaxUrl : (typeof ajaxurl === 'string' ? ajaxurl : '');
+                                effectiveSettingsUrl = baseAjax && baseAjax.indexOf('admin-ajax.php') !== -1 ? baseAjax.replace('admin-ajax.php','plugins.php?page=pqs-cache-status') : (window.location.origin + '/wp-admin/plugins.php?page=pqs-cache-status');
+                            } catch(_) { effectiveSettingsUrl = '/wp-admin/plugins.php?page=pqs-cache-status'; }
+                        }
+                        if (state.isActive === false && state.pluginFile) {
+                            actions = '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' + state.pluginFile + '" data-repo="' + state.repoName + '"><span class="dashicons dashicons-yes"></span> Activate →</button>';
+                        } else {
+                            if (effectiveSettingsUrl) {
+                                actions = ' <a href="' + effectiveSettingsUrl + '" class="button button-small"><span class="dashicons dashicons-admin-generic"></span> Settings</a>';
+                            } else {
+                                actions = '';
+                            }
+                        }
+                    } else if (state.isPlugin === true) {
+                        actions = '<button type="button" class="button button-small kiss-sbi-install-single" data-repo="' + state.repoName + '"><span class="dashicons dashicons-download"></span> Install</button>';
+                    } else if (state && state.error) {
+                        actions = '<button type="button" class="button button-small kiss-sbi-check-installed" data-repo="' + state.repoName + '">Retry</button>';
+                    } else {
+                        actions = '<button type="button" class="button button-small kiss-sbi-check-plugin" data-repo="' + state.repoName + '"><span class="dashicons dashicons-search"></span> Check</button>';
+                    }
+                    parts.push('<div class="kiss-sbi-actions">' + actions + '</div>');
+                    return '<div class="kiss-sbi-unified">' + parts.join('') + '</div>';
+                }
+
+                // Legacy: separate columns rendering (default when feature flag is off)
                 if (state.checking) {
                     return '<span class="kiss-sbi-plugin-checking" title="Checking status…"><span class="dashicons dashicons-update spin" aria-hidden="true"></span> Checking…</span>';
                 }
@@ -91,8 +155,9 @@ jQuery(document).ready(function($) {
                     if (state.isActive === false && state.pluginFile){
                         html += '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' + state.pluginFile + '" data-repo="' + state.repoName + '"><span class="dashicons dashicons-yes" aria-hidden="true"></span> Activate →</button>';
                     } else {
-                        const label = effectiveSettingsUrl ? 'Already Activated' : 'No Actions Available';
-                        html += '<span class="kiss-sbi-plugin-already-activated">' + label + '</span>';
+                        if (effectiveSettingsUrl){
+                            // No 'Already Activated' label to keep UI clean
+                        }
                     }
                     if (effectiveSettingsUrl){
                         html += ' <a href="' + effectiveSettingsUrl + '" class="button button-small"><span class="dashicons dashicons-admin-generic" aria-hidden="true"></span> Settings</a>';

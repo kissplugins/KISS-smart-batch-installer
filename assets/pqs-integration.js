@@ -7,7 +7,7 @@ function kissSbiUpdatePqsIndicator(state) {
         el.classList.remove('is-using', 'is-not-using', 'is-loading', 'is-stale');
         if (state === 'using') {
             el.classList.add('is-using');
-            el.textContent = 'PQS: Using Cache ✓';
+            el.textContent = 'PQS: Using Cache';
         } else if (state === 'loading') {
             el.classList.add('is-loading');
             el.textContent = 'PQS: Building Cache…';
