@@ -251,10 +251,7 @@ class AdminInterface
             <h1><?php _e('KISS Smart Batch Installer', 'kiss-smart-batch-installer'); ?></h1>
 
 
-            <div class="notice notice-warning" style="margin:12px 0;">
-                <p><strong>Important Notes:</strong> Installation of any plugins below are at your own risk. We do not run any security scans of any plugins. We rely on native/built-in WP functions to install or upgrade plugins from your specified repositories.</p>
-                <p>KISS Plugins does not offer any warranty or support for this software. Please review any plugins yourself before installation.</p>
-            </div>
+
 
             <div class="kiss-sbi-header">
                 <div>
@@ -294,6 +291,11 @@ class AdminInterface
                         <?php _e('Install Selected', 'kiss-smart-batch-installer'); ?>
                     </button>
                 </div>
+            </div>
+
+            <div class="notice notice-warning" style="margin:12px 0 16px 0;">
+                <p><strong><?php _e('Important Notes:', 'kiss-smart-batch-installer'); ?></strong> <?php _e('Installation of any plugins below are at your own risk. We do not run any security scans of any plugins. We rely on native/built-in WP functions to install or upgrade plugins from your specified repositories.', 'kiss-smart-batch-installer'); ?></p>
+                <p><?php _e('KISS Plugins does not offer any warranty or support for this software. Please review any plugins yourself before installation.', 'kiss-smart-batch-installer'); ?></p>
             </div>
 
             <?php if (is_wp_error($repositories)): ?>
