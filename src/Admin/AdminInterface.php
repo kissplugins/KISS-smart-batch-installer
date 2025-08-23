@@ -730,8 +730,13 @@ class AdminInterface
                 $ajax_contract_repo = (string) $r['repositories'][0]['name'];
             }
             if ($ajax_contract_repo) {
+                // Expose candidate to browser-side probe to avoid reliance on DOM
+                echo '<script>window.kissSbiSelfTestCandidateRepo=' . json_encode($ajax_contract_repo) . ';</script>';
+
                 $resp = wp_remote_post(admin_url('admin-ajax.php'), [
                     'timeout' => 15,
+                    // Allow self-signed certificates for local/dev environments during self-test loopback
+                    'sslverify' => false,
                     'body' => [
                         'action' => 'kiss_sbi_get_row_status',
                         'nonce' => wp_create_nonce('kiss_sbi_admin_nonce'),
@@ -899,9 +904,12 @@ class AdminInterface
             res.innerHTML = '<span style="color:#666;">RUNNING</span>';
             det.textContent = 'Pinging…';
             try {
-                var repoCell = document.querySelector('.wp-list-table tbody tr td strong');
-                var repo = repoCell ? repoCell.textContent.trim() : '';
-                if (!repo) { res.innerHTML = '<span style="color:#dc3232;font-weight:600;">FAIL</span>'; det.textContent = 'No repo candidate on page.'; return; }
+                var repo = (window.kissSbiSelfTestCandidateRepo || '').toString().trim();
+                if (!repo) {
+                    var repoCell = document.querySelector('.wp-list-table tbody tr td strong');
+                    repo = repoCell ? repoCell.textContent.trim() : '';
+                }
+                if (!repo) { res.innerHTML = '<span style="color:#dc3232;font-weight:600;">FAIL</span>'; det.textContent = 'No repo candidate available.'; return; }
                 var xhr = new XMLHttpRequest();
                 xhr.open('POST', ajaxurl, true);
                 xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
