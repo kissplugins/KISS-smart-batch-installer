@@ -453,6 +453,11 @@ class PluginInstaller
         $settings_url = '';
         if ($installed !== false) {
             $is_plugin = true;
+            // Provide Settings URL for our own plugin so unified cell can show the button
+            $slug = sanitize_title($repo_name);
+            if (strcasecmp($slug, 'kiss-smart-batch-installer') === 0) {
+                $settings_url = admin_url('admin.php?page=kiss-smart-batch-installer-settings');
+            }
         } else {
             // Defer to GitHubScraper::isWordPressPlugin for detection
             $scraper = new \KissSmartBatchInstaller\Core\GitHubScraper();
