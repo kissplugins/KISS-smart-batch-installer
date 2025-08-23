@@ -392,6 +392,7 @@ class AdminInterface
                         </td>
                         <td>
                             <?php if ($is_sbi_repo): ?>
+                                <a href="<?php echo esc_url(admin_url('admin.php?page=kiss-smart-batch-installer-settings')); ?>" class="button button-small"><span class="dashicons dashicons-admin-generic" aria-hidden="true"></span> <?php _e('Settings', 'kiss-smart-batch-installer'); ?></a>
                                 <button type="button" class="button button-primary kiss-sbi-self-update" data-repo="<?php echo esc_attr($repo['name']); ?>" style="margin-left:8px; display:none;">
                                     <?php _e('Update', 'kiss-smart-batch-installer'); ?>
                                 </button>
