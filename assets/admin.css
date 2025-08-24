@@ -406,6 +406,18 @@
     opacity: 0.8;
 }
 
+
+/* Unified row state visuals per PROJECT-UNIFY */
+/* Smooth transitions for state changes */
+.wp-list-table tbody tr { transition: background-color 0.2s ease, outline-color 0.2s ease, box-shadow 0.2s ease; }
+.wp-list-table tbody tr.plugin-checking {
+    background-color: #fff8e1; /* light amber */
+}
+.wp-list-table tbody tr.plugin-error {
+    background-color: #fdecea; /* light red */
+}
+.kiss-sbi-plugin-checking { color: #cc9a06; }
+
 .wp-list-table tbody tr.plugin-installed .kiss-sbi-repo-checkbox:disabled {
     opacity: 0.5;
     cursor: not-allowed;
@@ -455,3 +467,41 @@
 }
 
 
+/* Row highlight for quick-jump integrations (e.g., PQS) */
+.wp-list-table tbody tr.kiss-sbi-highlight {
+    background-color: #fffbe6; /* soft yellow */
+    outline: 2px solid #0073aa; /* WP blue */
+    outline-offset: -2px;
+    animation: kiss-sbi-row-flash 1.2s ease-out 1;
+}
+@keyframes kiss-sbi-row-flash {
+    0% { box-shadow: 0 0 0 0 rgba(0,115,170,0.35); }
+    100% { box-shadow: 0 0 0 12px rgba(0,115,170,0); }
+}
+
+/* Unified Status/Actions cell (feature-flagged) */
+.kiss-sbi-unified { display: grid; grid-template-columns: 1fr auto; gap: 8px; align-items: center; }
+.kiss-sbi-unified .kiss-sbi-status-pill { display:inline-flex; align-items:center; gap:6px; padding:2px 8px; border-radius:999px; font-weight:600; background:#f1f1f1; color:#444; }
+.kiss-sbi-status-pill.is-installed { background:#e6f4ea; color:#1e7e34; }
+.kiss-sbi-status-pill.is-plugin { background:#edf7ff; color:#0b5ed7; }
+.kiss-sbi-status-pill.is-not-plugin { background:#fdecea; color:#b02a37; }
+.kiss-sbi-status-pill.is-error { background:#fdecea; color:#b02a37; }
+.kiss-sbi-status-pill.is-unknown { background:#fff8e1; color:#8d6e00; }
+.kiss-sbi-unified .kiss-sbi-actions { justify-self:end; }
+
+/* Optional: hide Actions column when unified cell is on via wrapper/body class */
+.kiss-sbi-unified-hide-actions .wp-list-table thead th:nth-last-child(1),
+.kiss-sbi-unified-hide-actions .wp-list-table tbody td:nth-last-child(1) { display:none; }
+
+
+
+
+
+/* SBI Quick Search overlay inherits default styling from PQS-like modal via sbi-quick-search.js injected <style> */
+/* Red highlight box for SBI quick search selection */
+.wp-list-table tbody tr.kiss-sbi-red-highlight {
+  outline: 3px solid #dc3232; /* WP error red */
+  outline-offset: -2px;
+  animation: kiss-sbi-red-flash 1s ease-out 1;
+}
+@keyframes kiss-sbi-red-flash { from { background:#fff3f3; } to { background:transparent; } }

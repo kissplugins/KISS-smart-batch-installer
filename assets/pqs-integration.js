@@ -7,7 +7,7 @@ function kissSbiUpdatePqsIndicator(state) {
         el.classList.remove('is-using', 'is-not-using', 'is-loading', 'is-stale');
         if (state === 'using') {
             el.classList.add('is-using');
-            el.textContent = 'PQS: Using Cache ✓';
+            el.textContent = 'PQS: Using Cache';
         } else if (state === 'loading') {
             el.classList.add('is-loading');
             el.textContent = 'PQS: Building Cache…';
@@ -162,23 +162,16 @@ function kissSbiUpdatePqsIndicator(state) {
                 }
 
                 if (match) {
-                    const $statusCell = $row.find('.kiss-sbi-plugin-status');
-                    const $installButton = $row.find('.kiss-sbi-install-single');
-
-                    $statusCell
-                        .html('<span class="kiss-sbi-plugin-yes">\u2713 Installed ' + (match.isActive ? '(Active)' : '(Inactive)') + '</span>')
-                        .addClass('is-installed');
-
-                    // Disable install actions
-                    $installButton.text('Installed').addClass('button-disabled').prop('disabled', true).show();
-
-                    // Add settings link if available
-                    if (match.settingsUrl) {
-                        $installButton.after(' <a href="' + match.settingsUrl + '" class="button button-small">Settings</a>');
+                    // Use centralized RowStateManager to keep UI consistent
+                    if (window.RowStateManager && typeof window.RowStateManager.updateRow === 'function'){
+                        window.RowStateManager.updateRow(repoName, {
+                            isInstalled: true,
+                            isActive: !!match.isActive,
+                            isPlugin: true,
+                            settingsUrl: match.settingsUrl || ''
+                        });
                     }
-
-                    // Disable checkbox to prevent batch install selection
-                    $row.find('.kiss-sbi-repo-checkbox').prop('disabled', true);
+                    // PROJECT-UNIFY: Avoid legacy direct DOM mutations to prevent desync
                 }
             });
 

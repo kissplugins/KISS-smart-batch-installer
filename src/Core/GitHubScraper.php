@@ -22,7 +22,7 @@ class GitHubScraper
 
         // AJAX handlers
         add_action('wp_ajax_kiss_sbi_refresh_repos', [$this, 'ajaxRefreshRepositories']);
-        add_action('wp_ajax_kiss_sbi_scan_plugins', [$this, 'ajaxScanForPlugins']);
+        // Deprecated: kiss_sbi_scan_plugins (replaced by kiss_sbi_get_row_status)
         add_action('wp_ajax_kiss_sbi_clear_cache', [$this, 'ajaxClearCache']);
     }
 
@@ -392,8 +392,10 @@ class GitHubScraper
         $cached_result = get_transient($cache_key);
 
         // Clear cache for known false positives to force re-check with improved logic
-        $false_positives = ['tab-toggle', 'secret-sauce-llm-system-instructions'];
-        if (in_array($repo_name, $false_positives)) {
+        $false_positives = ['tab-toggle', 'secret-sauce-llm-system-instructions', 'NHK-plugin-framework'];
+        $repo_key = strtolower($repo_name);
+        $false_positives_lower = array_map('strtolower', $false_positives);
+        if (in_array($repo_key, $false_positives_lower, true)) {
             delete_transient($cache_key);
             $cached_result = false;
         }
@@ -417,6 +419,12 @@ class GitHubScraper
      */
     private function checkForPluginFile($repo_name)
     {
+        // Quick sanity check: if repo clearly has no PHP code, bail out early
+        $hasPhp = $this->repoLikelyHasPhp($repo_name);
+        if ($hasPhp === false) {
+            return false;
+        }
+
         // Common plugin file patterns at the repo root
         $possible_files = [
             $repo_name . '.php',
@@ -458,6 +466,40 @@ class GitHubScraper
         }
 
         return false;
+    }
+
+
+    /**
+     * Lightweight heuristic using GitHub Languages API to see if repo has PHP
+     * Returns true (has PHP), false (no PHP), or null (unknown/error)
+     */
+    private function repoLikelyHasPhp($repo_name)
+    {
+        $apiUrl = sprintf('https://api.github.com/repos/%s/%s/languages', urlencode($this->org_name), urlencode($repo_name));
+        $response = wp_remote_get($apiUrl, [
+            'timeout' => 10,
+            'user-agent' => 'WordPress/' . get_bloginfo('version') . '; ' . home_url(),
+        ]);
+        if (is_wp_error($response)) {
+            return null; // don't block on network errors
+        }
+        $code = wp_remote_retrieve_response_code($response);
+        if ($code !== 200) {
+            return null; // unknown; proceed with normal checks
+        }
+        $body = json_decode(wp_remote_retrieve_body($response), true);
+        if (!is_array($body) || empty($body)) {
+            // No languages detected; definitely not a PHP plugin
+            return false;
+        }
+        // If there is any PHP listed with non-zero bytes, treat as possible plugin
+        $phpBytes = 0;
+        foreach ($body as $lang => $bytes) {
+            if (strcasecmp($lang, 'PHP') === 0 && (int)$bytes > 0) {
+                $phpBytes = (int)$bytes; break;
+            }
+        }
+        return $phpBytes > 0;
     }
 
     /**
@@ -730,37 +772,7 @@ class GitHubScraper
     }
 
     /**
-     * AJAX handler for scanning plugins
+     * Deprecated: ajaxScanForPlugins removed in favor of unified kiss_sbi_get_row_status.
+     * This method is intentionally removed for a clean slate.
      */
-    public function ajaxScanForPlugins()
-    {
-        check_ajax_referer('kiss_sbi_admin_nonce', 'nonce');
-
-        if (!current_user_can('install_plugins')) {
-            wp_die(__('Insufficient permissions.', 'kiss-smart-batch-installer'));
-        }
-
-        $repo_name = sanitize_text_field($_POST['repo_name'] ?? '');
-
-        if (empty($repo_name)) {
-            wp_send_json_error(__('Repository name is required.', 'kiss-smart-batch-installer'));
-        }
-
-        $plugin_data = $this->isWordPressPlugin($repo_name);
-
-        if (is_wp_error($plugin_data)) {
-            wp_send_json_success([
-                'is_plugin' => false,
-                'plugin_data' => [
-                    'message' => $plugin_data->get_error_message(),
-                    'code' => $plugin_data->get_error_code()
-                ]
-            ]);
-        } else {
-            wp_send_json_success([
-                'is_plugin' => $plugin_data !== false,
-                'plugin_data' => $plugin_data
-            ]);
-        }
-    }
 }

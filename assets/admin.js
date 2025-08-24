@@ -1,6 +1,13 @@
 jQuery(document).ready(function($) {
     'use strict';
 
+    // Ensure unified-hide class is present early to hide Actions column via CSS
+    try {
+        if (window.kissSbiAjax && kissSbiAjax.unifiedCell) {
+            document.body.classList.add('kiss-sbi-unified-hide-actions');
+        }
+    } catch (_) {}
+
     let checkedPlugins = new Set();
     let pluginCheckQueue = [];
     let isProcessingQueue = false;
@@ -11,6 +18,161 @@ jQuery(document).ready(function($) {
             try { console.debug.apply(console, ['[KISS SBI]'].concat([].slice.call(arguments))); } catch (e) {}
         }
     }
+    // Light client cache for row states scoped by org
+    const STATE_CACHE_KEY = (function(){ try { return 'kiss_sbi_row_states_' + (kissSbiAjax && kissSbiAjax.org ? String(kissSbiAjax.org).toLowerCase() : 'default'); } catch(_) { return 'kiss_sbi_row_states_default'; } })();
+    const RowStateCache = {
+        load(){ try { return JSON.parse(localStorage.getItem(STATE_CACHE_KEY) || '{}'); } catch(_) { return {}; } },
+        save(states){ try { localStorage.setItem(STATE_CACHE_KEY, JSON.stringify(states||{})); } catch(_){} },
+        clear(){ try { localStorage.removeItem(STATE_CACHE_KEY); } catch(_){} }
+    };
+
+    // Unified row state manager (feature-flagged)
+    window.RowStateManager = window.RowStateManager || (function(){
+        const api = {
+            states: new Map(),
+            updateRow(repoName, updates){
+                const current = this.states.get(repoName) || this.getDefaultState(repoName);
+                const next = Object.assign({}, current, updates);
+                this.states.set(repoName, next);
+                // persist to cache (only serializable plain object)
+                try {
+                    const obj = {}; this.states.forEach((v,k)=>{ obj[k]=v; }); RowStateCache.save(obj);
+                } catch(_){ }
+                this.renderRow(repoName, next);
+            },
+            getDefaultState(repoName){
+                return { repoName, isPlugin: null, isInstalled: null, isActive: null, pluginFile: null, settingsUrl: null, checking: false, installing: false, error: null };
+            },
+            renderRow(repoName, state){
+                const $row = $('tr[data-repo="' + repoName + '"]');
+                if (!$row.length) return;
+                const $statusCell = $row.find('.kiss-sbi-plugin-status');
+                const $actionsCell = $row.find('td').last();
+                $statusCell.html(this.renderStatusCell(state));
+                // Keep legacy CSS hooks for other code paths
+                $statusCell.toggleClass('is-plugin', state.isPlugin === true);
+                $statusCell.toggleClass('is-installed', state.isInstalled === true);
+
+                if (kissSbiAjax && kissSbiAjax.unifiedCell) {
+                    // Unified mode: hide/empty legacy Actions column to avoid duplication
+                    $actionsCell.empty();
+                } else {
+                    $actionsCell.html(this.renderActionsCell(state));
+                }
+                $row.toggleClass('plugin-installed', state.isInstalled === true);
+                $row.toggleClass('plugin-checking', !!state.checking);
+                $row.toggleClass('plugin-error', !!state.error);
+                // Keep batch checkbox in sync
+                $row.find('.kiss-sbi-repo-checkbox').prop('disabled', state.isInstalled === true);
+            },
+            renderStatusCell(state){
+                // Unified cell rendering when feature flag is on
+                if (kissSbiAjax && kissSbiAjax.unifiedCell) {
+                    const parts = [];
+                    // Status pill
+                    if (state.checking) {
+                        parts.push('<div class="kiss-sbi-status-pill" aria-live="polite"><span class="dashicons dashicons-update spin"></span> Checking…</div>');
+                    } else if (state && state.error) {
+                        parts.push('<div class="kiss-sbi-status-pill is-error kiss-sbi-tooltip" title="' + String(state.error).replace(/"/g,'&quot;') + '"><span class="dashicons dashicons-warning"></span> Error</div>');
+                    } else if (state.isInstalled === true) {
+                        const act = state.isActive ? '(Active)' : '(Inactive)';
+                        parts.push('<div class="kiss-sbi-status-pill is-installed"><span class="dashicons dashicons-yes"></span> Installed ' + act + '</div>');
+                    } else if (state.isPlugin === true) {
+                        parts.push('<div class="kiss-sbi-status-pill is-plugin"><span class="dashicons dashicons-plugins-checked"></span> WordPress Plugin</div>');
+                    } else if (state.isPlugin === false) {
+                        parts.push('<div class="kiss-sbi-status-pill is-not-plugin"><span class="dashicons dashicons-dismiss"></span> Not a Plugin</div>');
+                    } else {
+                        parts.push('<div class="kiss-sbi-status-pill is-unknown"><span class="dashicons dashicons-info"></span> Unknown</div>');
+                    }
+                    // Actions row
+                    let actions = '';
+                    if (state.installing) {
+                        actions = '<button class="button button-small" disabled><span class="dashicons dashicons-update spin"></span> Installing…</button>';
+                    } else if (state.isInstalled === true) {
+                        let effectiveSettingsUrl = state.settingsUrl || '';
+                        const isPqs = !!(state.repoName && /^(kiss-)?plugin(-)?quick(-)?search$/i.test(String(state.repoName).replace(/^kiss[- ]/i,'kiss-')));
+                        if (isPqs && !effectiveSettingsUrl){
+                            try {
+                                const baseAjax = (typeof kissSbiAjax !== 'undefined' && kissSbiAjax && kissSbiAjax.ajaxUrl) ? kissSbiAjax.ajaxUrl : (typeof ajaxurl === 'string' ? ajaxurl : '');
+                                effectiveSettingsUrl = baseAjax && baseAjax.indexOf('admin-ajax.php') !== -1 ? baseAjax.replace('admin-ajax.php','plugins.php?page=pqs-cache-status') : (window.location.origin + '/wp-admin/plugins.php?page=pqs-cache-status');
+                            } catch(_) { effectiveSettingsUrl = '/wp-admin/plugins.php?page=pqs-cache-status'; }
+                        }
+                        if (state.isActive === false && state.pluginFile) {
+                            actions = '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' + state.pluginFile + '" data-repo="' + state.repoName + '"><span class="dashicons dashicons-yes"></span> Activate →</button>';
+                        } else {
+                            if (effectiveSettingsUrl) {
+                                actions = ' <a href="' + effectiveSettingsUrl + '" class="button button-small"><span class="dashicons dashicons-admin-generic"></span> Settings</a>';
+                            } else {
+                                actions = '';
+                            }
+                        }
+                    } else if (state.isPlugin === true) {
+                        actions = '<button type="button" class="button button-small kiss-sbi-install-single" data-repo="' + state.repoName + '"><span class="dashicons dashicons-download"></span> Install</button>';
+                    } else if (state && state.error) {
+                        actions = '<button type="button" class="button button-small kiss-sbi-check-installed" data-repo="' + state.repoName + '">Retry</button>';
+                    } else {
+                        actions = '<button type="button" class="button button-small kiss-sbi-check-plugin" data-repo="' + state.repoName + '"><span class="dashicons dashicons-search"></span> Check</button>';
+                    }
+                    parts.push('<div class="kiss-sbi-actions">' + actions + '</div>');
+                    return '<div class="kiss-sbi-unified">' + parts.join('') + '</div>';
+                }
+
+                // Legacy: separate columns rendering (default when feature flag is off)
+                if (state.checking) {
+                    return '<span class="kiss-sbi-plugin-checking" title="Checking status…"><span class="dashicons dashicons-update spin" aria-hidden="true"></span> Checking…</span>';
+                }
+                if (state && state.error) {
+                    return '<span class="kiss-sbi-plugin-error kiss-sbi-tooltip" title="' + String(state.error).replace(/"/g,'&quot;') + '"><span class="dashicons dashicons-warning" aria-hidden="true"></span> Error</span>' +
+                           ' <button type="button" class="button button-small kiss-sbi-check-installed" data-repo="' + state.repoName + '">Retry</button>';
+                }
+                if (state.isInstalled === true){
+                    return '<span class="kiss-sbi-plugin-yes" title="Installed"><span class="dashicons dashicons-yes" aria-hidden="true"></span> Installed ' + (state.isActive ? '(Active)' : '(Inactive)') + '</span>';
+                }
+                if (state.isPlugin === true){
+                    return '<span class="kiss-sbi-plugin-yes" title="WordPress Plugin"><span class="dashicons dashicons-plugins-checked" aria-hidden="true"></span> WordPress Plugin</span>';
+                }
+                if (state.isPlugin === false){
+                    return '<span class="kiss-sbi-plugin-no" title="Not a WordPress plugin"><span class="dashicons dashicons-dismiss" aria-hidden="true"></span> Not a Plugin</span>';
+                }
+                return '<button type="button" class="button button-small kiss-sbi-check-plugin" data-repo="' + state.repoName + '"><span class="dashicons dashicons-search" aria-hidden="true"></span> Check</button>';
+            },
+            renderActionsCell(state){
+                // Note: SBI-own row is handled separately by PHP; do not interfere
+                if (state.installing) return '<button class="button button-small" disabled><span class="dashicons dashicons-update spin" aria-hidden="true"></span> Installing…</button>';
+                if (state.isInstalled === true){
+                    let html = '';
+                    // Compute effective Settings URL (hardwire PQS settings if applicable)
+                    let effectiveSettingsUrl = state.settingsUrl || '';
+                    const isPqs = !!(state.repoName && /^(kiss-)?plugin(-)?quick(-)?search$/i.test(String(state.repoName).replace(/^kiss[- ]/i,'kiss-')));
+                    if (isPqs && !effectiveSettingsUrl){
+                        try {
+                            const baseAjax = (typeof kissSbiAjax !== 'undefined' && kissSbiAjax && kissSbiAjax.ajaxUrl) ? kissSbiAjax.ajaxUrl : (typeof ajaxurl === 'string' ? ajaxurl : '');
+                            effectiveSettingsUrl = baseAjax && baseAjax.indexOf('admin-ajax.php') !== -1 ? baseAjax.replace('admin-ajax.php','plugins.php?page=pqs-cache-status') : (window.location.origin + '/wp-admin/plugins.php?page=pqs-cache-status');
+                        } catch(_) {
+                            effectiveSettingsUrl = '/wp-admin/plugins.php?page=pqs-cache-status';
+                        }
+                    }
+                    if (state.isActive === false && state.pluginFile){
+                        html += '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' + state.pluginFile + '" data-repo="' + state.repoName + '"><span class="dashicons dashicons-yes" aria-hidden="true"></span> Activate →</button>';
+                    } else {
+                        if (effectiveSettingsUrl){
+                            // No 'Already Activated' label to keep UI clean
+                        }
+                    }
+                    if (effectiveSettingsUrl){
+                        html += ' <a href="' + effectiveSettingsUrl + '" class="button button-small"><span class="dashicons dashicons-admin-generic" aria-hidden="true"></span> Settings</a>';
+                    }
+                    return html;
+                }
+                if (state.isPlugin === true){
+                    return '<button type="button" class="button button-small kiss-sbi-install-single" data-repo="' + state.repoName + '"><span class="dashicons dashicons-download" aria-hidden="true"></span> Install</button>';
+                }
+                return '<button type="button" class="button button-small kiss-sbi-check-installed" data-repo="' + state.repoName + '"><span class="dashicons dashicons-search" aria-hidden="true"></span> Check Status</button>';
+            }
+        };
+        return api;
+    })();
+
 
     // Initialize
     init();
@@ -19,9 +181,68 @@ jQuery(document).ready(function($) {
         bindEvents();
         updateBatchInstallButton();
 
-        // Queue all plugin checks instead of running them simultaneously
-        queueAllPluginChecks();
+        // Unified staged init per PROJECT-UNIFY: seed states, then check
+        try { initializeUnifiedRows(); } catch(e) { dbg('Unified init failed', e); }
     }
+        function initializeUnifiedRows(){
+            // Stage 0: hydrate from client cache (instant render)
+            try {
+                const cached = RowStateCache.load();
+                if (cached && typeof cached === 'object'){
+                    Object.keys(cached).forEach(function(repo){ RowStateManager.updateRow(repo, cached[repo]); });
+                }
+            } catch(e){ dbg('Cache hydrate failed', e); }
+
+            // Stage 1: defaults + checking flag for visible rows not in cache
+            $('.wp-list-table tbody tr').each(function(){
+                const repo = $(this).data('repo'); if (!repo) return;
+                if (!RowStateManager.states.has(repo)) {
+                    RowStateManager.updateRow(repo, { checking: true });
+                }
+            });
+
+            // Stage 2: PQS hints (if integration is present)
+            try {
+                if (window.KissSbiPQSIntegration && typeof window.KissSbiPQSIntegration.scanInstalledPlugins === 'function'){
+                    // Reuse PQS cache directly
+                    const raw = localStorage.getItem('pqs_plugin_cache') || '[]';
+                    let arr = []; try { arr = JSON.parse(raw); } catch(_){}
+                    if (Array.isArray(arr)){
+                        arr.forEach(function(plugin){
+                            const slug = (plugin.slug || '').toLowerCase();
+                            const name = (plugin.nameLower || plugin.name || '').toLowerCase();
+                            const variants = [];
+                            if (slug) variants.push(slug, slug.replace(/[^a-z0-9]/g,'-'), slug.replace(/[-_]/g,''));
+                            if (name) variants.push(name, name.replace(/[^a-z0-9]/g,'-'), name.replace(/[-_]/g,''));
+                            // Map variants back to row by matching row repoName variants
+                            $('.wp-list-table tbody tr').each(function(){
+                                const repo = ($(this).data('repo')||'').toString(); if (!repo) return;
+                                const lower = repo.toLowerCase();
+                                const repoVariants = [lower, lower.replace(/[^a-z0-9]/g,'-'), lower.replace(/[-_]/g,'')];
+                                for (let v of repoVariants){
+                                    if (variants.includes(v)){
+                                        RowStateManager.updateRow(repo, { isInstalled: true, isActive: !!plugin.isActive, isPlugin: true, settingsUrl: plugin.settingsUrl || null, checking: false });
+                                        break;
+                                    }
+                                }
+                            });
+                        });
+                    }
+                }
+            } catch(e) { dbg('PQS stage failed', e); }
+
+            // Stage 3: server-side install checks for each row, serialized to reduce load
+            const rows = $('.wp-list-table tbody tr').map(function(){ return ($(this).data('repo')||'').toString(); }).get();
+            let idx = 0;
+            function next(){ if (idx >= rows.length) return stage4(); checkInstalledFor(rows[idx++], next); }
+            next();
+
+            function stage4(){
+                // Stage 4: fall back to manual checks for any unknowns (still using unified endpoint)
+                queueAllPluginChecks();
+            }
+        }
+
 
     function bindEvents() {
         // Checkbox events
@@ -36,6 +257,65 @@ jQuery(document).ready(function($) {
         $(document).on('click', '.kiss-sbi-install-single', installSinglePlugin);
         $(document).on('click', '.kiss-sbi-activate-plugin', activatePlugin);
         $(document).on('click', '.kiss-sbi-check-installed', checkInstalled);
+        $(document).on('click', '.kiss-sbi-self-update', runSelfUpdate);
+        checkSelfUpdateAvailability();
+
+        function checkSelfUpdateAvailability() {
+            const $row = $('tr[data-repo="KISS-Smart-Batch-Installer"]');
+            if ($row.length === 0) return;
+            const $btn = $row.find('.kiss-sbi-self-update');
+            const $meta = $row.find('.kiss-sbi-self-update-meta');
+            $.post(kissSbiAjax.ajaxUrl, {
+                action: 'kiss_sbi_check_self_update',
+                nonce: kissSbiAjax.nonce
+            }, function(resp) {
+                if (!resp || !resp.success) return;
+                const data = resp.data || {};
+                if (data.error) {
+                    $meta.text('Update check failed: ' + data.error);
+                    return;
+                }
+                if (data.status === 'newer') {
+                    $btn.hide();
+                    $meta.text('Current (v' + data.installed + ') is newer than GitHub (v' + data.remote + ')');
+                } else if (data.status === 'older') {
+                    $btn.show().text('Update to v' + data.remote);
+                    $meta.text('(Installed v' + data.installed + ')');
+                } else if (data.status === 'equal') {
+                    $btn.hide();
+                    $meta.text('Up to date (v' + data.installed + ')');
+                } else {
+                    $btn.hide();
+                    $meta.text('Update status unknown');
+                }
+            });
+        }
+
+        function runSelfUpdate() {
+            const $btn = $(this);
+            const $row = $btn.closest('tr');
+            const $meta = $row.find('.kiss-sbi-self-update-meta');
+            if (!confirm('Update KISS Smart Batch Installer now?')) return;
+            const original = $btn.text();
+            $btn.prop('disabled', true).text('Updating...');
+            $.post(kissSbiAjax.ajaxUrl, {
+                action: 'kiss_sbi_run_self_update',
+                nonce: kissSbiAjax.nonce
+            }, function(resp) {
+                if (resp && resp.success) {
+                    $meta.text('Updated to v' + (resp.data && resp.data.installed ? resp.data.installed : 'latest'));
+                    location.reload();
+                } else {
+                    const msg = resp && resp.data ? resp.data : 'Unknown error';
+                    alert('Update failed: ' + msg);
+                    $btn.prop('disabled', false).text(original);
+                }
+            }).fail(function(){
+                alert('Update failed.');
+                $btn.prop('disabled', false).text(original);
+            });
+        }
+
     }
 
     function queueAllPluginChecks() {
@@ -119,6 +399,9 @@ jQuery(document).ready(function($) {
         dbg('Refresh Repositories clicked');
         $button.prop('disabled', true).text(kissSbiAjax.strings.loading || 'Loading...');
 
+        // Clear client cache so a full rescan happens after refresh
+        try { RowStateCache.clear(); } catch(_){ }
+
         $.ajax({
             url: kissSbiAjax.ajaxUrl,
             type: 'POST',
@@ -149,6 +432,7 @@ jQuery(document).ready(function($) {
         const original = $btn.text();
         dbg('Clear Cache clicked');
         $btn.prop('disabled', true).text('Clearing...');
+        try { RowStateCache.clear(); } catch(_){ }
         $.ajax({
             url: kissSbiAjax.ajaxUrl,
             type: 'POST',
@@ -166,6 +450,30 @@ jQuery(document).ready(function($) {
             complete: function(){ $btn.prop('disabled', false).text(original); }
         });
     }
+
+    // Helper used by unified init to check install state and unify rendering
+    function checkInstalledFor(repoName, done){
+        const $row = $('tr[data-repo="' + repoName + '"]');
+        if (!$row.length){ if (done) done(); return; }
+        $.ajax({
+            url: kissSbiAjax.ajaxUrl,
+            type: 'POST',
+            data: { action: 'kiss_sbi_get_row_status', nonce: kissSbiAjax.nonce, repo_name: repoName },
+            success: function(response){
+                if (response && response.success && response.data){
+                    const payload = response.data;
+                    // Ensure checking is reset in UI
+                    payload.checking = false;
+                    RowStateManager.updateRow(repoName, payload);
+                } else {
+                    RowStateManager.updateRow(repoName, { checking: false, error: 'status_failed' });
+                }
+            },
+            error: function(){ RowStateManager.updateRow(repoName, { error: 'status_failed', checking: false }); },
+            complete: function(){ if (done) done(); }
+        });
+    }
+
 
     function checkPlugin() {
         // For manual clicks, add to queue if not already processing
@@ -187,44 +495,21 @@ jQuery(document).ready(function($) {
             url: kissSbiAjax.ajaxUrl,
             type: 'POST',
             data: {
-                action: 'kiss_sbi_scan_plugins',
+                action: 'kiss_sbi_get_row_status',
                 nonce: kissSbiAjax.nonce,
                 repo_name: repoName
             },
             success: function(response) {
-                dbg('Scan response', response);
-                if (response && response.success) {
-                    if (response.data && response.data.is_plugin) {
-                        $statusCell.html('<span class="kiss-sbi-plugin-yes">✓ WordPress Plugin</span>')
-                                  .addClass('is-plugin');
-
-                        // Show and enable install button
-                        $row.find('.kiss-sbi-install-single').show().prop('disabled', false);
-
-                        // Show plugin info if available
-                        if (response.data.plugin_data && response.data.plugin_data.plugin_name) {
-                            const pluginName = response.data.plugin_data.plugin_name;
-                            const version = response.data.plugin_data.version;
-                            let tooltip = 'Plugin: ' + pluginName;
-                            if (version) {
-                                tooltip += ' (v' + version + ')';
-                            }
-                            $statusCell.find('span').attr('title', tooltip);
-                        }
-                    } else {
-                        // Not a plugin or undetected; include details if provided
-                        let detail = '';
-                        if (response.data && response.data.plugin_data && response.data.plugin_data.message) {
-                            detail = ' (' + response.data.plugin_data.message + ')';
-                        }
-                        $statusCell.html('<span class="kiss-sbi-plugin-no">✗ Not a Plugin</span>')
-                                  .removeClass('is-plugin');
-                    }
-
+                dbg('Status response', response);
+                if (response && response.success && response.data) {
+                    const payload = response.data;
+                    payload.checking = false;
+                    RowStateManager.updateRow(repoName, payload);
                     updateCheckedPlugins();
                     updateBatchInstallButton();
                 } else {
-                    $statusCell.html('<span class="kiss-sbi-plugin-error">Error checking</span>'); dbg('Scan failed', response);
+                    RowStateManager.updateRow(repoName, { checking: false, error: 'status_failed' });
+                    dbg('Status failed', response);
                 }
 
                 // Call callback when done
@@ -233,7 +518,7 @@ jQuery(document).ready(function($) {
                 }
             },
             error: function() {
-                $statusCell.html('<span class="kiss-sbi-plugin-error">Error checking</span>');
+                RowStateManager.updateRow(repoName, { checking: false, error: 'status_failed' });
 
                 // Call callback even on error
                 if (callback) {
@@ -267,20 +552,18 @@ jQuery(document).ready(function($) {
             success: function(response) {
                 if (response.success) {
                     if (response.data.activated) {
-                        $button.text(kissSbiAjax.strings.installed).addClass('button-disabled');
+                        RowStateManager.updateRow(repoName, { isInstalled: true, isActive: true, pluginFile: response.data.plugin_file || null, isPlugin: true, checking: false, installing: false });
                         showSuccess('Plugin "' + repoName + '" installed and activated successfully.');
                     } else {
                         // Show activate button
-                        // Replace install button with Activate →
-                        $button.replaceWith(
-                            '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' +
-                            response.data.plugin_file + '" data-repo="' + repoName + '">Activate →</button>'
-                        );
+                        RowStateManager.updateRow(repoName, { isInstalled: true, isActive: false, pluginFile: response.data.plugin_file || null, isPlugin: true, checking: false, installing: false });
                         showSuccess('Plugin "' + repoName + '" installed successfully. Click "Activate →" to activate it.');
                     }
                 } else {
                     $button.prop('disabled', false).text(originalText);
-                    showError('Failed to install "' + repoName + '": ' + response.data);
+                    var extra = (response && response.data && response.data.logs) ? '\nDetails: ' + (Array.isArray(response.data.logs) ? response.data.logs.join(' | ') : response.data.logs) : '';
+                    showError('Failed to install "' + repoName + '": ' + response.data + extra);
+                    if (extra) { try { console.error('[KISS SBI] Upgrader logs:', response.data.logs); } catch(e){} }
                 }
             },
             error: function() {
@@ -353,24 +636,16 @@ jQuery(document).ready(function($) {
             success: function(response) {
                 if (response.success) {
                     if (response.data.activated) {
+                        RowStateManager.updateRow(repoName, { isInstalled: true, isActive: true, pluginFile: response.data.plugin_file || null, installing: false, checking: false });
                         $statusSpan.text('Installed & Activated').removeClass('installing').addClass('success');
                     } else {
-                        $statusSpan.html('Installed - <button type="button" class="button button-small kiss-sbi-activate-plugin" data-plugin-file="' +
-                            response.data.plugin_file + '" data-repo="' + repoName + '">Activate →</button>').removeClass('installing').addClass('success');
-                    }
-
-                    // Update single install button if visible
-                    const $singleButton = $('.kiss-sbi-install-single[data-repo="' + repoName + '"]');
-                    if (response.data.activated) {
-                        $singleButton.text(kissSbiAjax.strings.installed).addClass('button-disabled').prop('disabled', true);
-                    } else {
-                        $singleButton.replaceWith(
-                            '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' +
-                            response.data.plugin_file + '" data-repo="' + repoName + '">Activate →</button>'
-                        );
+                        RowStateManager.updateRow(repoName, { isInstalled: true, isActive: false, pluginFile: response.data.plugin_file || null, installing: false, checking: false });
+                        $statusSpan.text('Installed').removeClass('installing').addClass('success');
                     }
                 } else {
-                    $statusSpan.text('Error: ' + response.data).removeClass('installing').addClass('error');
+                    var extra = (response && response.data && response.data.logs) ? ' — details in console' : '';
+                    $statusSpan.text('Error: ' + response.data + extra).removeClass('installing').addClass('error');
+                    if (response && response.data && response.data.logs) { try { console.error('[KISS SBI] Upgrader logs:', response.data.logs); } catch(e){} }
                 }
             },
             error: function() {
@@ -421,6 +696,8 @@ jQuery(document).ready(function($) {
         const repoName = $button.data('repo');
         const $actionsCell = $button.closest('td');
         const $installButton = $actionsCell.find('.kiss-sbi-install-single');
+        const $row = $button.closest('tr');
+        const $statusCell = $row.find('.kiss-sbi-plugin-status');
 
         $button.prop('disabled', true).text('Checking...');
 
@@ -428,29 +705,22 @@ jQuery(document).ready(function($) {
             url: kissSbiAjax.ajaxUrl,
             type: 'POST',
             data: {
-                action: 'kiss_sbi_check_installed',
+                action: 'kiss_sbi_get_row_status',
                 nonce: kissSbiAjax.nonce,
                 repo_name: repoName
             },
             success: function(response) {
-                if (response.success && response.data.installed) {
-                    const pluginData = response.data.data;
-                    if (pluginData.active) {
-                        $button.replaceWith('<span class="kiss-sbi-plugin-already-activated">Already Activated</span>');
-                    } else {
-                        $button.replaceWith(
-                            '<button type="button" class="button button-primary kiss-sbi-activate-plugin" data-plugin-file="' +
-                            pluginData.plugin_file + '" data-repo="' + repoName + '">Activate →</button>'
-                        );
-                    }
+                if (response && response.success && response.data) {
+                    const payload = response.data;
+                    payload.checking = false;
+                    RowStateManager.updateRow(repoName, payload);
                 } else {
-                    // Not installed - show install button
-                    $button.text('Not Installed').prop('disabled', true);
-                    $installButton.show().prop('disabled', false);
+                    RowStateManager.updateRow(repoName, { checking: false, error: 'status_failed' });
                 }
             },
             error: function() {
                 $button.prop('disabled', false).text('Check Status');
+                RowStateManager.updateRow(repoName, { checking: false, error: 'status_failed' });
             }
         });
     }
@@ -477,7 +747,7 @@ jQuery(document).ready(function($) {
             },
             success: function(response) {
                 if (response.success) {
-                    $button.replaceWith('<span class="kiss-sbi-plugin-already-activated">Already Activated</span>');
+                    RowStateManager.updateRow(repoName, { isActive: true, isInstalled: true, pluginFile: pluginFile, checking: false });
                     showSuccess('Plugin "' + repoName + '" activated successfully.');
                 } else {
                     $button.prop('disabled', false).text(originalText);
@@ -490,4 +760,66 @@ jQuery(document).ready(function($) {
             }
         });
     }
+
+    // Expose a tiny API for integrations (e.g., PQS) to focus/highlight a row
+    // Usage: window.kissSbiFocusRowByKey('my-plugin')
+    // - key can be a repo name or plugin slug; we match by common variants
+    window.kissSbiFocusRowByKey = function(key){
+        try {
+            if (!key) return false;
+            const k = String(key).toLowerCase();
+            const variants = [k, k.replace(/[^a-z0-9]/g,'-'), k.replace(/[-_]/g,'')];
+            const rows = Array.from(document.querySelectorAll('.wp-list-table tbody tr[data-repo]'));
+            function repoVariants(repo){
+                const lower = String(repo||'').toLowerCase();
+                return [lower, lower.replace(/[^a-z0-9]/g,'-'), lower.replace(/[-_]/g,'')];
+            }
+            for (const tr of rows){
+                const repo = tr.getAttribute('data-repo');
+                const rvars = repoVariants(repo);
+                if (variants.some(v => rvars.includes(v))){
+                    tr.classList.add('kiss-sbi-highlight');
+                    tr.scrollIntoView({ behavior:'smooth', block:'center' });
+                    // Focus checkbox or primary action for accessibility
+                    const cb = tr.querySelector('.kiss-sbi-repo-checkbox');
+                    if (cb) cb.focus();
+                    setTimeout(() => tr.classList.remove('kiss-sbi-highlight'), 1600);
+                    return true;
+                }
+            }
+            return false;
+        } catch(e){ try{ console.warn('[KISS SBI] focus API failed', e); }catch(_){} return false; }
+    };
+
+    // Variant: red highlight box preferred by Quick Search selection
+    window.kissSbiFocusRowRed = function(key){
+        try {
+            if (!key) return false;
+            const k = String(key).toLowerCase();
+            const variants = [k, k.replace(/[^a-z0-9]/g,'-'), k.replace(/[-_]/g,'')];
+            const rows = Array.from(document.querySelectorAll('.wp-list-table tbody tr[data-repo]'));
+            function repoVariants(repo){
+                const lower = String(repo||'').toLowerCase();
+                return [lower, lower.replace(/[^a-z0-9]/g,'-'), lower.replace(/[-_]/g,'')];
+            }
+            for (const tr of rows){
+                const repo = tr.getAttribute('data-repo');
+                const rvars = repoVariants(repo);
+                if (variants.some(v => rvars.includes(v))){
+                    tr.classList.add('kiss-sbi-red-highlight');
+                    tr.scrollIntoView({ behavior:'smooth', block:'center' });
+                    const cb = tr.querySelector('.kiss-sbi-repo-checkbox');
+                    if (cb) cb.focus();
+                    setTimeout(() => tr.classList.remove('kiss-sbi-red-highlight'), 1500);
+                    return true;
+                }
+            }
+            return false;
+        } catch(e){ try{ console.warn('[KISS SBI] focus API (red) failed', e); }catch(_){} return false; }
+    };
+
+    // Optional: announce that the API is ready for late listeners
+    try { document.dispatchEvent(new CustomEvent('kiss-sbi-focus-ready')); } catch(_){}
+
+
 });

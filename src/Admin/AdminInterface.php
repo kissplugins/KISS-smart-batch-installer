@@ -109,6 +109,20 @@ class AdminInterface
      */
     public function enqueueAssets($hook)
     {
+        // Always enqueue keyboard shortcuts on admin pages
+        wp_enqueue_script(
+            'kiss-sbi-keyboard-shortcuts',
+            KISS_SBI_PLUGIN_URL . 'assets/keyboard-shortcuts.js',
+            ['jquery'],
+            KISS_SBI_VERSION,
+            true
+        );
+
+        // Localize script with installer URL for keyboard shortcut
+        wp_localize_script('kiss-sbi-keyboard-shortcuts', 'kissSbiShortcuts', [
+            'installerUrl' => admin_url('plugins.php?page=kiss-smart-batch-installer'),
+            'debug' => (bool) apply_filters('kiss_sbi_debug', true)
+        ]);
         if (strpos($hook, 'kiss-smart-batch-installer') === false) {
             return;
         }
@@ -124,6 +138,15 @@ class AdminInterface
             'kiss-sbi-admin',
             KISS_SBI_PLUGIN_URL . 'assets/admin.js',
             ['jquery'],
+            KISS_SBI_VERSION,
+            true
+        );
+
+        // SBI Quick Search overlay (for in-page search on SBI screen)
+        wp_enqueue_script(
+            'kiss-sbi-quick-search',
+            KISS_SBI_PLUGIN_URL . 'assets/sbi-quick-search.js',
+            ['kiss-sbi-admin'],
             KISS_SBI_VERSION,
             true
         );
@@ -144,11 +167,18 @@ class AdminInterface
             KISS_SBI_VERSION
         );
 
+        // Default unified cell flag: enable unified cell by default (can be overridden via filter)
+        $unified_default = true;
+
+        $unified_cell_enabled = (bool) apply_filters('kiss_sbi_unified_cell', $unified_default);
+
         wp_localize_script('kiss-sbi-admin', 'kissSbiAjax', [
             'ajaxUrl' => admin_url('admin-ajax.php'),
             'nonce' => wp_create_nonce('kiss_sbi_admin_nonce'),
             'debug' => (bool) apply_filters('kiss_sbi_debug', true),
             'hasPQS' => (bool) $has_pqs,
+            'org' => (string) get_option('kiss_sbi_github_org', ''),
+            'unifiedCell' => $unified_cell_enabled,
             'strings' => [
                 'installing' => __('Installing...', 'kiss-smart-batch-installer'),
                 'installed' => __('Installed', 'kiss-smart-batch-installer'),
@@ -194,6 +224,10 @@ class AdminInterface
             return;
         }
 
+        // Unified cell flag (server-side) for CSS column hiding
+        $unified_default = true;
+        $unified_cell_enabled = (bool) apply_filters('kiss_sbi_unified_cell', $unified_default);
+
         // Handle pagination
         $current_page = max(1, (int) ($_GET['paged'] ?? 1));
         $per_page = 15;
@@ -208,16 +242,45 @@ class AdminInterface
             $pagination = $result['pagination'];
         }
 
+        // If org is kissplugins, pin SBI first and PQS second (companions)
+        if (!is_wp_error($repositories) && strtolower($github_org) === 'kissplugins') {
+            $sbi = null; $pqs = null; $rest = [];
+            foreach ($repositories as $r) {
+                $name = isset($r['name']) ? $r['name'] : '';
+                if (strcasecmp($name, 'KISS-Smart-Batch-Installer') === 0) { $sbi = $r; continue; }
+                if (strcasecmp($name, 'KISS-Plugin-Quick-Search') === 0) { $pqs = $r; continue; }
+                $rest[] = $r;
+            }
+            if ($pqs === null) {
+                $pqs = [
+                    'name' => 'KISS-Plugin-Quick-Search',
+                    'description' => __('Plugin Quick Search (helper for faster SBI detection)', 'kiss-smart-batch-installer'),
+                    'language' => 'PHP',
+                    'updated_at' => '',
+                    'url' => 'https://github.com/kissplugins/KISS-Plugin-Quick-Search',
+                    'is_wordpress_plugin' => null
+                ];
+            }
+            $new = [];
+            if ($sbi) { $new[] = $sbi; }
+            if ($pqs) { $new[] = $pqs; }
+            $repositories = array_merge($new, $rest);
+        }
+
         ?>
+
+
         <div class="wrap">
             <h1><?php _e('KISS Smart Batch Installer', 'kiss-smart-batch-installer'); ?></h1>
+
+
+
 
             <div class="kiss-sbi-header">
                 <div>
                     <p><?php printf(__('Showing repositories from: <strong>%s</strong>', 'kiss-smart-batch-installer'), esc_html($github_org)); ?></p>
                     <p style="margin-top:6px;color:#646970;">
                         <?php
-                        $repo_limit = (int) get_option('kiss_sbi_repo_limit', 15);
                         echo wp_kses_post(sprintf(
                             __('Heads up: the current selection on screen might be missing repos. Increase the limit in <a href="%s">Settings</a> if needed.', 'kiss-smart-batch-installer'),
                             esc_url(admin_url('admin.php?page=kiss-smart-batch-installer-settings'))
@@ -251,6 +314,11 @@ class AdminInterface
                         <?php _e('Install Selected', 'kiss-smart-batch-installer'); ?>
                     </button>
                 </div>
+            </div>
+
+            <div class="notice notice-warning" style="margin:12px 0 16px 0;">
+                <p><strong><?php _e('Important Notes:', 'kiss-smart-batch-installer'); ?></strong> <?php _e('Installation of any plugins below are at your own risk. We do not run any security scans of any plugins. We rely on native/built-in WP functions to install or upgrade plugins from your specified repositories.', 'kiss-smart-batch-installer'); ?></p>
+                <p><?php _e('KISS Plugins does not offer any warranty or support for this software. Please review any plugins yourself before installation.', 'kiss-smart-batch-installer'); ?></p>
             </div>
 
             <?php if (is_wp_error($repositories)): ?>
@@ -314,6 +382,7 @@ class AdminInterface
             </thead>
             <tbody>
                 <?php foreach ($repositories as $repo): ?>
+                    <?php $is_sbi_repo = (strcasecmp($repo['name'], 'KISS-Smart-Batch-Installer') === 0); ?>
                     <tr data-repo="<?php echo esc_attr($repo['name']); ?>">
                         <th class="check-column">
                             <input type="checkbox" name="selected_repos[]" value="<?php echo esc_attr($repo['name']); ?>" class="kiss-sbi-repo-checkbox">
@@ -323,6 +392,9 @@ class AdminInterface
                                 <a href="<?php echo esc_url($repo['url']); ?>" target="_blank">
                                     <?php echo esc_html($repo['name']); ?>
                                 </a>
+                                <?php if ($is_sbi_repo): ?>
+                                    <span class="dashicons dashicons-yes" title="This plugin"></span>
+                                <?php endif; ?>
                             </strong>
                         </td>
                         <td><?php echo esc_html($repo['description']); ?></td>
@@ -335,17 +407,29 @@ class AdminInterface
                             ?>
                         </td>
                         <td class="kiss-sbi-plugin-status" data-repo="<?php echo esc_attr($repo['name']); ?>">
-                            <button type="button" class="button button-small kiss-sbi-check-plugin" data-repo="<?php echo esc_attr($repo['name']); ?>">
-                                <?php _e('Check', 'kiss-smart-batch-installer'); ?>
-                            </button>
+                            <?php if ($is_sbi_repo): ?>
+                                <span class="kiss-sbi-plugin-yes" title="WordPress Plugin">✓ WordPress Plugin</span>
+                            <?php else: ?>
+                                <button type="button" class="button button-small kiss-sbi-check-plugin" data-repo="<?php echo esc_attr($repo['name']); ?>">
+                                    <?php _e('Check', 'kiss-smart-batch-installer'); ?>
+                                </button>
+                            <?php endif; ?>
                         </td>
                         <td>
-                            <button type="button" class="button button-small kiss-sbi-check-installed" data-repo="<?php echo esc_attr($repo['name']); ?>">
-                                <?php _e('Check Status', 'kiss-smart-batch-installer'); ?>
-                            </button>
-                            <button type="button" class="button button-small kiss-sbi-install-single" data-repo="<?php echo esc_attr($repo['name']); ?>" disabled style="display: none;">
-                                <?php _e('Install', 'kiss-smart-batch-installer'); ?>
-                            </button>
+                            <?php if ($is_sbi_repo): ?>
+                                <a href="<?php echo esc_url(admin_url('admin.php?page=kiss-smart-batch-installer-settings')); ?>" class="button button-small"><span class="dashicons dashicons-admin-generic" aria-hidden="true"></span> <?php _e('Settings', 'kiss-smart-batch-installer'); ?></a>
+                                <button type="button" class="button button-primary kiss-sbi-self-update" data-repo="<?php echo esc_attr($repo['name']); ?>" style="margin-left:8px; display:none;">
+                                    <?php _e('Update', 'kiss-smart-batch-installer'); ?>
+                                </button>
+                                <span class="kiss-sbi-self-update-meta" style="color:#646970;"></span>
+                            <?php else: ?>
+                                <button type="button" class="button button-small kiss-sbi-check-installed" data-repo="<?php echo esc_attr($repo['name']); ?>">
+                                    <?php _e('Check Status', 'kiss-smart-batch-installer'); ?>
+                                </button>
+                                <button type="button" class="button button-small kiss-sbi-install-single" data-repo="<?php echo esc_attr($repo['name']); ?>" disabled style="display: none;">
+                                    <?php _e('Install', 'kiss-smart-batch-installer'); ?>
+                                </button>
+                            <?php endif; ?>
                         </td>
                     </tr>
                 <?php endforeach; ?>
@@ -545,7 +629,7 @@ class AdminInterface
         }
         $results['pagination'] = array_merge(['label' => __('Repository fetch + pagination', 'kiss-smart-batch-installer')], $paginationCheck);
 
-        // 3) Plugin detection spot-check (up to 5 repos)
+        // 3) Plugin detection: spot-check recent repos + assert non-plugins stay non-plugins
         $detectCheck = ['pass' => false, 'details' => ''];
         if (!empty($org) && !is_wp_error($r1 ?? null)) {
             $names = array_slice(wp_list_pluck($r1['repositories'], 'name'), 0, 5);
@@ -556,15 +640,66 @@ class AdminInterface
                     $detectCheck['details'] = $res->get_error_message();
                     break;
                 }
-                if (!empty($res['is_plugin'])) {
+                if ($res && !is_wp_error($res)) {
                     $counts['plugins']++;
                 } else {
                     $counts['not_plugins']++;
                 }
             }
+            // Assert known non-plugins are detected as non-plugins
+            $known_non_plugins = [];
+            if (strtolower($org) === 'kissplugins') {
+                $known_non_plugins[] = 'NHK-plugin-framework';
+            }
+            $failed_non_plugin = '';
+            foreach ($known_non_plugins as $np) {
+                $res = $this->github_scraper->isWordPressPlugin($np);
+                if (!is_wp_error($res) && !empty($res['is_plugin'])) {
+                    $failed_non_plugin = $np; break;
+                }
+            }
             if (empty($detectCheck['details'])) {
-                $detectCheck['pass'] = true; // The check executed
-                $detectCheck['details'] = sprintf(__('Checked %d repos: %d plugins, %d not plugins', 'kiss-smart-batch-installer'), count($names), $counts['plugins'], $counts['not_plugins']);
+                $detectCheck['pass'] = empty($failed_non_plugin);
+                $detectCheck['details'] = empty($failed_non_plugin)
+                    ? sprintf(__('Checked %d repos: %d plugins, %d not plugins. Non-plugin assertions passed.', 'kiss-smart-batch-installer'), count($names), $counts['plugins'], $counts['not_plugins'])
+                    : sprintf(__('Regression: %s should not be detected as a plugin.', 'kiss-smart-batch-installer'), $failed_non_plugin);
+        // 4) Upgrader dry-run (non-destructive)
+        $upgraderCheck = ['pass' => false, 'details' => ''];
+        try {
+            include_once ABSPATH . 'wp-admin/includes/class-wp-upgrader.php';
+            $skin = new \WP_Upgrader_Skin();
+            $upgrader = new \Plugin_Upgrader($skin);
+            $testRepo = null;
+            if (!empty($org) && !is_wp_error($r1 ?? null)) {
+                $names = wp_list_pluck($r1['repositories'], 'name');
+                foreach ($names as $n) { if ($n && stripos($n, 'framework') === false) { $testRepo = $n; break; } }
+            }
+            if ($testRepo) {
+                $zipUrl = sprintf('https://github.com/%s/%s/archive/refs/heads/main.zip', urlencode($org), urlencode($testRepo));
+                // Probe only: verify reachability without installing (HEAD then Range GET fallback)
+                $resp = wp_remote_head($zipUrl, ['timeout' => 10, 'redirection' => 5]);
+                $code = !is_wp_error($resp) ? (int) wp_remote_retrieve_response_code($resp) : 0;
+                $ok = ($code >= 200 && $code < 300) || ($code >= 300 && $code < 400);
+                if (!$ok) {
+                    // Fallback: GET first byte only to avoid full download
+                    $resp = wp_remote_get($zipUrl, ['timeout' => 10, 'redirection' => 5, 'headers' => ['Range' => 'bytes=0-0']]);
+                    $code = !is_wp_error($resp) ? (int) wp_remote_retrieve_response_code($resp) : 0;
+                    $ok = in_array($code, [200, 206], true);
+                }
+                if ($ok) {
+                    $upgraderCheck['pass'] = true;
+                    $upgraderCheck['details'] = sprintf(__('Zip reachable for %s (HTTP %d; no install performed).', 'kiss-smart-batch-installer'), esc_html($testRepo), $code);
+                } else {
+                    $upgraderCheck['details'] = sprintf(__('Could not reach GitHub zip for dry-run (HTTP %d).', 'kiss-smart-batch-installer'), $code);
+                }
+            } else {
+                $upgraderCheck['details'] = __('No suitable repository available for dry-run.', 'kiss-smart-batch-installer');
+            }
+        } catch (\Throwable $e) {
+            $upgraderCheck['details'] = $e->getMessage();
+        }
+        $results['upgrader_dry_run'] = array_merge(['label' => __('Upgrader dry-run (zip reachable)', 'kiss-smart-batch-installer')], $upgraderCheck);
+
             }
         } else if (empty($org)) {
             $detectCheck['details'] = __('Org not set; skipping.', 'kiss-smart-batch-installer');
@@ -608,8 +743,62 @@ class AdminInterface
         $results['pqs_found'] = [
             'label' => __('PQS Cache plugin found', 'kiss-smart-batch-installer'),
             'pass' => (bool) $hasPqs,
-            'details' => $hasPqs ? __('Plugin Quick Search is active.', 'kiss-smart-batch-installer') : __('Plugin Quick Search is not active.', 'kiss-smart-batch-installer'),
+            'details' => $hasPqs ? __('Plugin Quick Search is active.', 'kiss-smart-batch-installer') : __('Plugin Quick Search is not active.', 'kiss-smart-batch-installer') . (strtolower($org) === 'kissplugins' ? ' — <button type="button" class="button button-small" id="kiss-sbi-install-pqs">' . esc_html__('Install PQS from main', 'kiss-smart-batch-installer') . '</button>' : ''),
         ];
+
+        // 6) ajaxGetRowStatus contract (server-side)
+        $ajaxContract = ['pass' => false, 'details' => ''];
+        $ajax_contract_repo = '';
+        try {
+            $r = $this->github_scraper->getRepositories(true, 1, 1);
+            if (!is_wp_error($r) && !empty($r['repositories'][0]['name'])) {
+                $ajax_contract_repo = (string) $r['repositories'][0]['name'];
+            }
+            if ($ajax_contract_repo) {
+                // Expose candidate to browser-side probe to avoid reliance on DOM
+                echo '<script>window.kissSbiSelfTestCandidateRepo=' . json_encode($ajax_contract_repo) . ';</script>';
+
+                $resp = wp_remote_post(admin_url('admin-ajax.php'), [
+                    'timeout' => 15,
+                    // Allow self-signed certificates for local/dev environments during self-test loopback
+                    'sslverify' => false,
+                    'body' => [
+                        'action' => 'kiss_sbi_get_row_status',
+                        'nonce' => wp_create_nonce('kiss_sbi_admin_nonce'),
+                        'repo_name' => $ajax_contract_repo,
+                    ],
+                ]);
+                if (!is_wp_error($resp)) {
+                    $code = (int) wp_remote_retrieve_response_code($resp);
+                    $body = wp_remote_retrieve_body($resp);
+                    $json = json_decode($body, true);
+                    $ok = ($code >= 200 && $code < 300) && is_array($json) && !empty($json['success']) && !empty($json['data']) && is_array($json['data']);
+                    $keys = ['repoName','isPlugin','isInstalled','isActive','pluginFile','settingsUrl','checking','installing','error'];
+                    $hasKeys = $ok;
+                    if ($ok) {
+                        foreach ($keys as $k) { if (!array_key_exists($k, $json['data'])) { $hasKeys = false; break; } }
+                    }
+                    $ajaxContract['pass'] = $ok && $hasKeys;
+                    if ($ajaxContract['pass']) {
+                        $ajaxContract['details'] = sprintf(__('OK for %s (all keys present).', 'kiss-smart-batch-installer'), esc_html($ajax_contract_repo));
+                    } else {
+                        $ajaxContract['details'] = sprintf(__('Invalid response (HTTP %d).', 'kiss-smart-batch-installer'), $code);
+                        if (is_array($json) && isset($json['data']) && is_array($json['data'])) {
+                            $missing = [];
+                            foreach ($keys as $k) { if (!array_key_exists($k, $json['data'])) { $missing[] = $k; } }
+                            if (!empty($missing)) { $ajaxContract['details'] .= ' Missing: ' . implode(', ', $missing); }
+                        }
+                    }
+                } else {
+                    $ajaxContract['details'] = $resp->get_error_message();
+                }
+            } else {
+                $ajaxContract['details'] = __('No repository available to test.', 'kiss-smart-batch-installer');
+            }
+        } catch (\Throwable $e) {
+            $ajaxContract['details'] = $e->getMessage();
+        }
+        $results['ajax_status_contract'] = array_merge(['label' => __('ajaxGetRowStatus contract (server)', 'kiss-smart-batch-installer')], $ajaxContract);
 
         // 6) PQS cache usage (client-side verification)
         $results['pqs_used'] = [
@@ -617,6 +806,43 @@ class AdminInterface
             'pass' => false,
             'details' => __('Will be verified in-browser using pqsCacheStatus().', 'kiss-smart-batch-installer'),
         ];
+
+        // Filesystem readiness (WP_Filesystem)
+        $fsCheck = ['pass' => false, 'details' => ''];
+        try {
+            if (!function_exists('WP_Filesystem')) {
+                require_once ABSPATH . 'wp-admin/includes/file.php';
+            }
+            $init = WP_Filesystem();
+            global $wp_filesystem;
+            if (!$init || !$wp_filesystem) {
+                $fsCheck['details'] = __('Could not initialize WP_Filesystem (credentials may be required).', 'kiss-smart-batch-installer');
+            } else {
+                $method = method_exists($wp_filesystem, 'method') ? $wp_filesystem->method : 'unknown';
+                // Use uploads dir for safe write
+                $uploads = wp_get_upload_dir();
+                $base = trailingslashit($uploads['basedir']) . 'kiss-sbi-selftest';
+                $file = trailingslashit($base) . 'probe.txt';
+                // Ensure base dir
+                if (!$wp_filesystem->exists($base)) {
+                    $wp_filesystem->mkdir($base);
+                }
+                $okWrite = $wp_filesystem->put_contents($file, 'ok:' . time());
+                $okRead = $okWrite && $wp_filesystem->exists($file) && is_string($wp_filesystem->get_contents($file));
+                $okDelete = $okRead && $wp_filesystem->delete($file);
+                // Try remove dir (ignore failure if non-empty)
+                $wp_filesystem->delete($base, true);
+                if ($okWrite && $okRead && $okDelete) {
+                    $fsCheck['pass'] = true;
+                    $fsCheck['details'] = sprintf(__('WP_Filesystem ready (method=%s). Wrote and removed test file in uploads.', 'kiss-smart-batch-installer'), esc_html($method));
+                } else {
+                    $fsCheck['details'] = sprintf(__('WP_Filesystem write/read/delete failed (method=%s). Check permissions on uploads.', 'kiss-smart-batch-installer'), esc_html($method));
+                }
+            }
+        } catch (\Throwable $e) {
+            $fsCheck['details'] = $e->getMessage();
+        }
+        $results['fs_ready'] = array_merge(['label' => __('Filesystem readiness (WP_Filesystem)', 'kiss-smart-batch-installer')], $fsCheck);
 
         // Render page
         echo '<div class="wrap">';
@@ -647,15 +873,97 @@ class AdminInterface
             '    var res=document.getElementById(\'test-\'+key+\'-result\'); if(res) res.innerHTML=statusHtml;\n' .
             '  }\n' .
             '  var det=document.getElementById(\'test-\'+key+\'-details\'); if(det) det.textContent=details||\'\';\n' .
+
             '}\n' .
             'window.kissSbiSelfTests={addOrUpdateRow:addOrUpdateRow};\n' .
             'document.dispatchEvent(new CustomEvent(\'kiss-sbi-self-tests-ready\',{detail:window.kissSbiSelfTests}));\n' .
             '})();</script>';
 
-        // Inline script to evaluate PQS usage in the browser
+        // Inline script to evaluate PQS usage in the browser + add Refresh button
         ?>
         <script>
+        // Add a "Refresh tests" button that re-runs in-browser checks and row-state tests
         (function(){
+            function ensureButton(){
+                var container = document.querySelector('.wrap h1');
+                if (!container) return;
+                var btn = document.getElementById('kiss-sbi-refresh-tests');
+                if (btn) return;
+                btn = document.createElement('a');
+                btn.id = 'kiss-sbi-refresh-tests';
+                btn.className = 'button';
+                btn.style.marginLeft = '10px';
+                btn.textContent = 'Refresh tests';
+                btn.addEventListener('click', function(){
+                    try { document.dispatchEvent(new CustomEvent('kiss-sbi-self-tests-ready',{detail:window.kissSbiSelfTests})); } catch(_) {}
+                    try { runPqsProbe(); } catch(_) {}
+                    try { runAjaxContractProbe(); } catch(_) {}
+                });
+                container.parentNode.insertBefore(btn, container.nextSibling);
+            }
+            if (document.readyState === 'complete' || document.readyState === 'interactive') ensureButton(); else document.addEventListener('DOMContentLoaded', ensureButton);
+        })();
+
+        // Enqueue RowStateManager tests into Self Tests page (browser-based)
+        (function(){
+            var s = document.createElement('script');
+            s.src = '<?php echo esc_js( KISS_SBI_PLUGIN_URL . 'assets/tests/row-state-tests.js' ); ?>';
+            s.async = true;
+            document.currentScript.parentNode.insertBefore(s, document.currentScript);
+        })();
+
+        // Ajax contract probe (client-side quick ping)
+        function runAjaxContractProbe(){
+            var rowId = 'test-ajax_status_contract_client';
+            var row = document.getElementById(rowId);
+            if (!row) {
+                var tbody = document.querySelector('.widefat tbody');
+                if (!tbody) return;
+                row = document.createElement('tr');
+                row.id = rowId;
+                row.innerHTML = '<td>ajaxGetRowStatus contract (client)</td><td id="'+rowId+'-result"></td><td id="'+rowId+'-details"></td>';
+                tbody.appendChild(row);
+            }
+            var res = document.getElementById(rowId+'-result');
+            var det = document.getElementById(rowId+'-details');
+            res.innerHTML = '<span style="color:#666;">RUNNING</span>';
+            det.textContent = 'Pinging…';
+            try {
+                var repo = (window.kissSbiSelfTestCandidateRepo || '').toString().trim();
+                if (!repo) {
+                    var repoCell = document.querySelector('.wp-list-table tbody tr td strong');
+                    repo = repoCell ? repoCell.textContent.trim() : '';
+                }
+                if (!repo) { res.innerHTML = '<span style="color:#dc3232;font-weight:600;">FAIL</span>'; det.textContent = 'No repo candidate available.'; return; }
+                var xhr = new XMLHttpRequest();
+                xhr.open('POST', ajaxurl, true);
+                xhr.setRequestHeader('Content-Type', 'application/x-www-form-urlencoded; charset=UTF-8');
+                xhr.onload = function(){
+                    try {
+                        var json = JSON.parse(xhr.responseText||'{}');
+                        var ok = json && json.success && json.data && typeof json.data === 'object';
+                        var keys = ['repoName','isPlugin','isInstalled','isActive','pluginFile','settingsUrl','checking','installing','error'];
+                        var hasAll = ok;
+                        if (ok) { for (var i=0;i<keys.length;i++){ if(!(keys[i] in json.data)){ hasAll=false; break; } } }
+                        if (ok && hasAll) {
+                            res.innerHTML = '<span style="color:#46b450;font-weight:600;">PASS</span>';
+                            det.textContent = 'OK for ' + json.data.repoName;
+                        } else {
+                            res.innerHTML = '<span style="color:#dc3232;font-weight:600;">FAIL</span>';
+                            det.textContent = 'Invalid response';
+                        }
+                    } catch(e){ res.innerHTML = '<span style="color:#dc3232;font-weight:600;">FAIL</span>'; det.textContent = 'Exception parsing response.'; }
+                };
+                xhr.onerror = function(){ res.innerHTML = '<span style="color:#dc3232;font-weight:600;">FAIL</span>'; det.textContent = 'XHR error'; };
+                xhr.send('action=kiss_sbi_get_row_status&nonce=<?php echo esc_js(wp_create_nonce('kiss_sbi_admin_nonce')); ?>&repo_name=' + encodeURIComponent(repo));
+            } catch(e) {
+                res.innerHTML = '<span style="color:#dc3232;font-weight:600;">FAIL</span>';
+                det.textContent = e && e.message ? e.message : 'Error';
+            }
+        }
+
+        // PQS usage probe
+        function runPqsProbe(){
             function setRow(pass, details){
                 var r = document.getElementById('test-pqs_used-result');
                 var d = document.getElementById('test-pqs_used-details');
@@ -663,20 +971,19 @@ class AdminInterface
                 r.innerHTML = pass ? '<span style="color:#46b450;font-weight:600;">PASS</span>' : '<span style="color:#dc3232;font-weight:600;">FAIL</span>';
                 d.textContent = details;
             }
-            function run(){
-                try{
-                    var raw = localStorage.getItem('pqs_plugin_cache');
-                    var len = 0; try { var arr = JSON.parse(raw||'[]'); len = Array.isArray(arr)?arr.length:0; } catch(e) {}
-                    var status = (typeof window.pqsCacheStatus === 'function') ? window.pqsCacheStatus() : (len > 0 ? 'unknown' : 'missing');
-                    var used = (status === 'fresh') || (status === 'unknown' && len > 0);
-                    var detail = 'status=' + status + ', entries=' + len + (status==='unknown' ? ' (via localStorage)' : '');
-                    setRow(!!used, detail);
-                }catch(e){
-                    setRow(false, 'Error: ' + (e && e.message ? e.message : e));
-                }
-            }
-            if (document.readyState === 'complete' || document.readyState === 'interactive') run();
-            else document.addEventListener('DOMContentLoaded', run);
+            try{
+                var raw = localStorage.getItem('pqs_plugin_cache');
+                var len = 0; try { var arr = JSON.parse(raw||'[]'); len = Array.isArray(arr)?arr.length:0; } catch(e) {}
+                var status = (typeof window.pqsCacheStatus === 'function') ? window.pqsCacheStatus() : (len > 0 ? 'unknown' : 'missing');
+                var used = (status === 'fresh') || (status === 'unknown' && len > 0);
+                var detail = 'status=' + status + ', entries=' + len + (status==='unknown' ? ' (via localStorage)' : '');
+                setRow(!!used, detail);
+            }catch(e){ setRow(false, 'Error: ' + (e && e.message ? e.message : e)); }
+        }
+
+        (function(){
+            if (document.readyState === 'complete' || document.readyState === 'interactive') { runPqsProbe(); runAjaxContractProbe(); }
+            else document.addEventListener('DOMContentLoaded', function(){ runPqsProbe(); runAjaxContractProbe(); });
         })();
         </script>
         <?php

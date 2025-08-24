@@ -2,6 +2,45 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.2] - 2025-08-23
+
+### Added
+- **Keyboard Shortcut Integration**: Added Cmd/Ctrl+Shift+P keyboard shortcut to navigate to Smart Batch Installer
+  - Works from any WordPress admin page
+  - Integrates with PQS cache system for unified experience
+  - Prevents navigation if already on Smart Batch Installer page
+  - Provides console logging for debugging
+
+### Enhanced
+- **PQS Cache Integration**: Improved integration with Plugin Quick Search cache system
+  - Unified keyboard shortcut experience across both plugins
+  - Better cache status detection and management
+  - Enhanced debugging and logging capabilities
+
+## [1.1.1] - 2025-08-20
+### Changed
+- Core install path migrated to WordPress Plugin_Upgrader for GitHub installs (PluginInstaller)
+- Implemented scoped upgrader_source_selection for repo ZIPs to normalize extracted directory names
+- Verbose Upgrader error logs surfaced in UI for single and batch installs; logs available via console
+- Self Tests: added Upgrader dry-run (non-destructive HEAD check for main.zip)
+- Cleaned up legacy manual download/extract helpers; rely on Upgrader and WP_Filesystem
+
+### Security/Compatibility
+- Prefer WP_Filesystem operations during Upgrader filters (rename/move/delete) and fallback to direct methods only if necessary
+- Improved compatibility with environments requiring filesystem credentials
+- Post-install validation now prefers WordPress plugin registry (get_plugins) with file scan fallback
+
+
+## [1.1.0] - 2025-08-20
+### Added
+- Self-updater for SBI using WordPress Plugin_Upgrader (downloads main.zip and overwrites safely)
+- Pin SBI repo to the top of the list when org = kissplugins
+- Admin UI: SBI row always shows ✓ WordPress Plugin and Already Activated; shows Update button when newer version exists
+- PQS documentation section in README and clarification that SBI has no built-in plugin metadata cache (only repository list caching)
+
+### Fixed
+- Minor admin JS robustness around status checks
+
 ## [1.0.1] - 2025-08-17
 ### Added
 - Status UI updates:
