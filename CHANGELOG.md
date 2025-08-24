@@ -2,7 +2,20 @@
 
 All notable changes to this project will be documented in this file.
 
+## [1.1.2] - 2025-08-23
 
+### Added
+- **Keyboard Shortcut Integration**: Added Cmd/Ctrl+Shift+P keyboard shortcut to navigate to Smart Batch Installer
+  - Works from any WordPress admin page
+  - Integrates with PQS cache system for unified experience
+  - Prevents navigation if already on Smart Batch Installer page
+  - Provides console logging for debugging
+
+### Enhanced
+- **PQS Cache Integration**: Improved integration with Plugin Quick Search cache system
+  - Unified keyboard shortcut experience across both plugins
+  - Better cache status detection and management
+  - Enhanced debugging and logging capabilities
 
 ## [1.1.1] - 2025-08-20
 ### Changed

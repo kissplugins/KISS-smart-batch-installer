@@ -791,6 +791,33 @@ jQuery(document).ready(function($) {
         } catch(e){ try{ console.warn('[KISS SBI] focus API failed', e); }catch(_){} return false; }
     };
 
+    // Variant: red highlight box preferred by Quick Search selection
+    window.kissSbiFocusRowRed = function(key){
+        try {
+            if (!key) return false;
+            const k = String(key).toLowerCase();
+            const variants = [k, k.replace(/[^a-z0-9]/g,'-'), k.replace(/[-_]/g,'')];
+            const rows = Array.from(document.querySelectorAll('.wp-list-table tbody tr[data-repo]'));
+            function repoVariants(repo){
+                const lower = String(repo||'').toLowerCase();
+                return [lower, lower.replace(/[^a-z0-9]/g,'-'), lower.replace(/[-_]/g,'')];
+            }
+            for (const tr of rows){
+                const repo = tr.getAttribute('data-repo');
+                const rvars = repoVariants(repo);
+                if (variants.some(v => rvars.includes(v))){
+                    tr.classList.add('kiss-sbi-red-highlight');
+                    tr.scrollIntoView({ behavior:'smooth', block:'center' });
+                    const cb = tr.querySelector('.kiss-sbi-repo-checkbox');
+                    if (cb) cb.focus();
+                    setTimeout(() => tr.classList.remove('kiss-sbi-red-highlight'), 1500);
+                    return true;
+                }
+            }
+            return false;
+        } catch(e){ try{ console.warn('[KISS SBI] focus API (red) failed', e); }catch(_){} return false; }
+    };
+
     // Optional: announce that the API is ready for late listeners
     try { document.dispatchEvent(new CustomEvent('kiss-sbi-focus-ready')); } catch(_){}
 

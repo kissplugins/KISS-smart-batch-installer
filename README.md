@@ -4,6 +4,7 @@ A WordPress plugin that allows you to manage and batch install WordPress plugins
 
 ## Features
 
+- **Keyboard Shortcut**: Press Cmd/Ctrl+Shift+P from any WordPress admin page to quickly navigate to Smart Batch Installer
 - **Automatic Repository Discovery**: Scrapes your GitHub organization's repositories page to find the most recently updated repos
 - **WordPress Plugin Detection**: Automatically identifies which repositories contain WordPress plugins
 - **Batch Installation**: Install multiple plugins at once directly from GitHub

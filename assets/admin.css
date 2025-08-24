@@ -495,3 +495,13 @@
 
 
 
+
+
+/* SBI Quick Search overlay inherits default styling from PQS-like modal via sbi-quick-search.js injected <style> */
+/* Red highlight box for SBI quick search selection */
+.wp-list-table tbody tr.kiss-sbi-red-highlight {
+  outline: 3px solid #dc3232; /* WP error red */
+  outline-offset: -2px;
+  animation: kiss-sbi-red-flash 1s ease-out 1;
+}
+@keyframes kiss-sbi-red-flash { from { background:#fff3f3; } to { background:transparent; } }

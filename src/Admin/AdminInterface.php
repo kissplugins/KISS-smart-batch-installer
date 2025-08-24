@@ -109,6 +109,20 @@ class AdminInterface
      */
     public function enqueueAssets($hook)
     {
+        // Always enqueue keyboard shortcuts on admin pages
+        wp_enqueue_script(
+            'kiss-sbi-keyboard-shortcuts',
+            KISS_SBI_PLUGIN_URL . 'assets/keyboard-shortcuts.js',
+            ['jquery'],
+            KISS_SBI_VERSION,
+            true
+        );
+
+        // Localize script with installer URL for keyboard shortcut
+        wp_localize_script('kiss-sbi-keyboard-shortcuts', 'kissSbiShortcuts', [
+            'installerUrl' => admin_url('plugins.php?page=kiss-smart-batch-installer'),
+            'debug' => (bool) apply_filters('kiss_sbi_debug', true)
+        ]);
         if (strpos($hook, 'kiss-smart-batch-installer') === false) {
             return;
         }
@@ -124,6 +138,15 @@ class AdminInterface
             'kiss-sbi-admin',
             KISS_SBI_PLUGIN_URL . 'assets/admin.js',
             ['jquery'],
+            KISS_SBI_VERSION,
+            true
+        );
+
+        // SBI Quick Search overlay (for in-page search on SBI screen)
+        wp_enqueue_script(
+            'kiss-sbi-quick-search',
+            KISS_SBI_PLUGIN_URL . 'assets/sbi-quick-search.js',
+            ['kiss-sbi-admin'],
             KISS_SBI_VERSION,
             true
         );
