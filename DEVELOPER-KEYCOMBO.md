@@ -1,12 +1,22 @@
 # Developer Guide: PQS Keyboard Shortcut Integration
 
-https://github.com/kissplugins/KISS-Plugin-Quick-Search
-
 This guide explains how to integrate your WordPress plugin management tool with the **Plugin Quick Search (PQS)** keyboard shortcut system and cache infrastructure.
 
 ## Overview
 
 The PQS system provides a unified **Cmd/Ctrl+Shift+P** keyboard shortcut that can be shared across multiple plugin management tools. This creates a consistent user experience where the same keyboard combination can intelligently route users to different plugin-related interfaces.
+
+## 🚨 IMPORTANT: Coordination System
+
+**PQS uses a coordination system to prevent keyboard shortcut conflicts.** Your plugin MUST check for and respect the PQS coordination markers to ensure proper behavior.
+
+### Required Coordination Checks
+
+Before implementing your own keyboard handler, your plugin must:
+
+1. **Check for PQS Priority**: Look for `window.pqsKeyboardHandlerActive`
+2. **Use PQS API**: If available, use `window.PQS.open()` instead of competing
+3. **Implement Smart Routing**: Route users based on context and PQS availability
 
 ## Integration Benefits
 
@@ -18,13 +28,13 @@ The PQS system provides a unified **Cmd/Ctrl+Shift+P** keyboard shortcut that ca
 
 ## Quick Start Integration
 
-### Step 1: Create Keyboard Shortcut Script
+### Step 1: Create Coordinated Keyboard Shortcut Script
 
-Create a JavaScript file (e.g., `assets/pqs-keyboard-integration.js`):
+Create a JavaScript file (e.g., `assets/pqs-keyboard-integration.js`) that respects the PQS coordination system:
 
 ```javascript
 /**
- * PQS Keyboard Shortcut Integration
+ * PQS Keyboard Shortcut Integration with Coordination System
  * Integrates your plugin with the PQS keyboard shortcut system
  */
 
@@ -32,34 +42,86 @@ jQuery(document).ready(function($) {
     'use strict';
 
     function initPQSKeyboardIntegration() {
-        document.addEventListener('keydown', function(e) {
-            // Check for Cmd/Ctrl+Shift+P
-            if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'P') {
-                e.preventDefault();
-                
-                // Check if we're already on your plugin's page
-                const currentUrl = window.location.href;
-                if (currentUrl.includes('page=your-plugin-page')) {
-                    console.log('Your Plugin: Already on plugin page');
-                    return;
+        // Check if PQS coordination system is active
+        if (window.pqsKeyboardHandlerActive) {
+            console.log('Your Plugin: PQS keyboard handler detected, using coordination system');
+
+            // Register with PQS ecosystem instead of competing
+            document.addEventListener('keydown', function(e) {
+                // Check for Cmd/Ctrl+Shift+P
+                if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'P') {
+                    e.preventDefault();
+
+                    // Use PQS coordination system
+                    if (window.PQS && typeof window.PQS.open === 'function') {
+                        // Check current context to determine best action
+                        const currentUrl = window.location.href;
+
+                        if (currentUrl.includes('page=your-plugin-page')) {
+                            // Already on your plugin page, open PQS modal for search
+                            console.log('Your Plugin: On plugin page, opening PQS modal for search');
+                            window.PQS.open();
+                        } else if (currentUrl.includes('plugins.php') && !currentUrl.includes('page=')) {
+                            // On main plugins page, open PQS modal
+                            console.log('Your Plugin: On plugins page, opening PQS modal');
+                            window.PQS.open();
+                        } else {
+                            // On other admin pages, navigate to your plugin
+                            console.log('Your Plugin: On other page, navigating to plugin');
+                            navigateToYourPlugin();
+                        }
+                    } else {
+                        // Fallback if PQS API not available
+                        console.log('Your Plugin: PQS API not available, using fallback navigation');
+                        navigateToYourPlugin();
+                    }
                 }
-                
-                // Navigate to your plugin page
-                const pluginUrl = typeof yourPluginAjax !== 'undefined' && yourPluginAjax.pluginUrl 
-                    ? yourPluginAjax.pluginUrl 
-                    : '/wp-admin/admin.php?page=your-plugin-page';
-                
-                window.location.href = pluginUrl;
-                
-                console.log('Your Plugin: Keyboard shortcut triggered');
-            }
-        });
-        
-        console.log('Your Plugin: PQS keyboard integration initialized');
+            });
+        } else {
+            // PQS not active, use standalone keyboard shortcut
+            console.log('Your Plugin: PQS not detected, using standalone keyboard shortcut');
+
+            document.addEventListener('keydown', function(e) {
+                // Check for Cmd/Ctrl+Shift+P
+                if ((e.metaKey || e.ctrlKey) && e.shiftKey && e.key === 'P') {
+                    e.preventDefault();
+
+                    // Check if we're already on your plugin's page
+                    const currentUrl = window.location.href;
+                    if (currentUrl.includes('page=your-plugin-page')) {
+                        console.log('Your Plugin: Already on plugin page');
+                        return;
+                    }
+
+                    navigateToYourPlugin();
+                }
+            });
+        }
+
+        console.log('Your Plugin: Keyboard shortcuts initialized with PQS coordination');
+    }
+
+    // Helper function to navigate to your plugin
+    function navigateToYourPlugin() {
+        const pluginUrl = typeof yourPluginAjax !== 'undefined' && yourPluginAjax.pluginUrl
+            ? yourPluginAjax.pluginUrl
+            : '/wp-admin/admin.php?page=your-plugin-page';
+
+        window.location.href = pluginUrl;
+        console.log('Your Plugin: Navigating to plugin page');
     }
 
     // Initialize integration
     initPQSKeyboardIntegration();
+
+    // Expose for debugging and coordination
+    window.YourPluginKeyboardShortcuts = {
+        init: initPQSKeyboardIntegration,
+        navigateToPlugin: navigateToYourPlugin,
+        hasPQSCoordination: function() {
+            return window.pqsKeyboardHandlerActive && window.PQS;
+        }
+    };
 });
 ```
 
@@ -96,6 +158,50 @@ Ensure the script loads on all admin pages:
 public function __construct() {
     add_action('admin_enqueue_scripts', [$this, 'enqueueAssets']);
     // ... other hooks
+}
+```
+
+## PQS Coordination System
+
+### How the Coordination System Works
+
+The PQS plugin sets up coordination markers early in its initialization:
+
+```javascript
+// PQS sets these markers when it initializes
+window.pqsKeyboardHandlerActive = true;  // Indicates PQS is handling keyboard shortcuts
+window.PQS = {                           // Public API for other plugins
+    open: function() { /* opens PQS modal */ },
+    close: function() { /* closes PQS modal */ },
+    isOpen: function() { /* returns modal state */ },
+    getStatus: function() { /* returns PQS status */ }
+};
+```
+
+### Integration Priority System
+
+1. **Primary**: PQS modal (if PQS is active)
+2. **Secondary**: Navigate to specific plugin pages
+3. **Fallback**: Standalone behavior when PQS not available
+
+### Smart Context Routing
+
+Your plugin should route users based on current context:
+
+```javascript
+function determineOptimalAction() {
+    const currentUrl = window.location.href;
+
+    if (currentUrl.includes('page=your-plugin-page')) {
+        // On your plugin page - open PQS for search
+        return 'open-pqs';
+    } else if (currentUrl.includes('plugins.php') && !currentUrl.includes('page=')) {
+        // On main plugins page - open PQS modal
+        return 'open-pqs';
+    } else {
+        // On other admin pages - navigate to your plugin
+        return 'navigate-to-plugin';
+    }
 }
 ```
 
@@ -271,26 +377,65 @@ function debouncedCacheRead() {
 
 ## Testing Your Integration
 
-### 1. Basic Functionality Test
+### 1. Coordination System Test
 
 ```javascript
-// Test keyboard shortcut
-console.log('Testing keyboard shortcut integration...');
-document.dispatchEvent(new KeyboardEvent('keydown', {
-    key: 'P',
-    ctrlKey: true,
-    shiftKey: true,
-    bubbles: true
-}));
+// Test PQS coordination system
+function testPQSCoordination() {
+    console.log('Testing PQS coordination system...');
+
+    // Check for coordination markers
+    const hasKeyboardHandler = !!window.pqsKeyboardHandlerActive;
+    const hasPQSAPI = !!(window.PQS && typeof window.PQS.open === 'function');
+
+    console.log('PQS keyboard handler active:', hasKeyboardHandler);
+    console.log('PQS API available:', hasPQSAPI);
+
+    if (hasKeyboardHandler && hasPQSAPI) {
+        console.log('✅ PQS coordination system detected');
+        console.log('Your plugin should use coordinated behavior');
+    } else {
+        console.log('ℹ️ PQS coordination system not detected');
+        console.log('Your plugin should use standalone behavior');
+    }
+}
 ```
 
-### 2. Cache Integration Test
+### 2. Keyboard Shortcut Test
+
+```javascript
+// Test keyboard shortcut with coordination
+function testKeyboardShortcut() {
+    console.log('Testing keyboard shortcut integration...');
+
+    // Simulate Cmd/Ctrl+Shift+P
+    document.dispatchEvent(new KeyboardEvent('keydown', {
+        key: 'P',
+        ctrlKey: true,
+        shiftKey: true,
+        bubbles: true
+    }));
+
+    // Check behavior based on coordination system
+    setTimeout(() => {
+        if (window.PQS && window.PQS.isOpen && window.PQS.isOpen()) {
+            console.log('✅ PQS modal opened (coordinated behavior)');
+        } else if (window.location.href.includes('page=your-plugin-page')) {
+            console.log('✅ Navigated to plugin page (standalone behavior)');
+        } else {
+            console.log('❌ Keyboard shortcut may not be working');
+        }
+    }, 100);
+}
+```
+
+### 3. Cache Integration Test
 
 ```javascript
 // Test cache access
 function testPQSCacheIntegration() {
     const cacheData = usePQSCache();
-    
+
     if (cacheData && cacheData.length > 0) {
         console.log('✅ PQS cache integration working');
         console.log(`Found ${cacheData.length} cached plugins`);
@@ -483,6 +628,13 @@ function registerWithPQSEcosystem() {
 
 ## Integration Checklist
 
+### Required (Coordination System)
+- [ ] **Check for `window.pqsKeyboardHandlerActive` before setting up keyboard handler**
+- [ ] **Use `window.PQS.open()` when PQS coordination system is active**
+- [ ] **Implement smart context routing based on current page**
+- [ ] **Provide fallback behavior when PQS not available**
+
+### Standard Integration
 - [ ] Keyboard shortcut script created and enqueued
 - [ ] Script loads on all admin pages (not just plugin-specific pages)
 - [ ] Proper URL localization in PHP
@@ -493,7 +645,14 @@ function registerWithPQSEcosystem() {
 - [ ] Conflict prevention measures
 - [ ] User preference support (optional)
 - [ ] Documentation updated
-- [ ] Testing completed
+
+### Testing
+- [ ] **Coordination system detection tested**
+- [ ] **Keyboard shortcut behavior tested with and without PQS**
+- [ ] **Context-based routing verified**
+- [ ] Cache integration tested
+- [ ] Fallback behavior verified
+- [ ] Console logging verified
 
 ## Version Compatibility
 

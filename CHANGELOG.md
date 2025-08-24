@@ -12,10 +12,15 @@ All notable changes to this project will be documented in this file.
   - Provides console logging for debugging
 
 ### Enhanced
+### Enhanced
 - **PQS Cache Integration**: Improved integration with Plugin Quick Search cache system
   - Unified keyboard shortcut experience across both plugins
   - Better cache status detection and management
   - Enhanced debugging and logging capabilities
+- **Developer Documentation**: Updated DEVELOPER-KEYCOMBO.md with coordination system
+  - Synchronized documentation across both PQS and SBI repositories
+  - Added comprehensive coordination system examples
+  - Enhanced integration checklist and testing procedures
 
 ## [1.1.1] - 2025-08-20
 ### Changed
