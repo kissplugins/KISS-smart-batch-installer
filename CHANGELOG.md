@@ -2,6 +2,26 @@
 
 All notable changes to this project will be documented in this file.
 
+
+## [1.1.3] - 2025-08-24
+
+### Added
+- SBI Quick Search overlay on the SBI page, opened with Cmd/Ctrl+Shift+P
+  - Searches the currently loaded SBI GitHub repository list
+  - Hyphen/underscore/space tolerant matching
+  - Enter highlights the matched row with a red outline and focuses its checkbox
+  - Minimal PQS-like modal styling for consistency
+- New helper API: `window.kissSbiFocusRowRed(key)` for red-box selection highlight
+
+### Changed
+- Keyboard shortcuts: On the SBI page, the combo now opens the in-page SBI Quick Search (no redirect)
+- Plugins page behavior unchanged: continue deferring to PQS and/or calling `PQS.open()` when available
+- Enqueue `assets/sbi-quick-search.js` from `AdminInterface` on the SBI screen
+- Minor CSS additions for the red highlight outline
+
+### Docs
+- Added `projectlog.md` to summarize today’s work and decisions
+
 ## [1.1.2] - 2025-08-23
 
 ### Added
