@@ -3,6 +3,20 @@
 All notable changes to this project will be documented in this file.
 
 
+## [1.1.4] - 2025-08-25
+
+### Changed
+- Introduced a client-side Finite State Machine (assets/fsm.js) to manage per-repo row status deterministically
+  - States: UNKNOWN, CHECKING, NOT_PLUGIN, INSTALLABLE, INSTALLING, DOWNLOADED_INACTIVE, ACTIVATING, DOWNLOADED_ACTIVE, ERROR
+  - Events: INIT, CHECK_START/SUCCESS/FAIL, INSTALL_START/SUCCESS/FAIL, ACTIVATE_START/SUCCESS/FAIL, STATUS_REFRESH, CLEAR_ERROR
+  - RowStateManager now consumes FSM snapshots; legacy rendering and CSS hooks maintained
+- assets/admin.js: wired all actions (check/install/activate) to dispatch FSM events and render from snapshots
+- src/Admin/AdminInterface.php: enqueues assets/fsm.js before admin.js
+- src/Core/PluginInstaller.php: ajaxGetRowStatus adds optional `fsmState` hint for gradual adoption
+
+### Bump
+- Version bumped to 1.1.4
+
 ## [1.1.3] - 2025-08-24
 
 ### Added

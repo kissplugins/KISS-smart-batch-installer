@@ -483,6 +483,23 @@ class PluginInstaller
             'error'       => null,
         ];
 
+        // Optional FSM state hint for clients adopting FSM gradually
+        try {
+            if ($payload['isInstalled'] === true && $payload['isActive'] === true) {
+                $payload['fsmState'] = 'DOWNLOADED_ACTIVE';
+            } elseif ($payload['isInstalled'] === true && $payload['isActive'] === false) {
+                $payload['fsmState'] = 'DOWNLOADED_INACTIVE';
+            } elseif ($payload['isPlugin'] === true) {
+                $payload['fsmState'] = 'INSTALLABLE';
+            } elseif ($payload['isPlugin'] === false) {
+                $payload['fsmState'] = 'NOT_PLUGIN';
+            } else {
+                $payload['fsmState'] = 'UNKNOWN';
+            }
+        } catch (\Throwable $e) {
+            // No-op; keep response minimal if something goes wrong building hint
+        }
+
         wp_send_json_success($payload);
     }
 

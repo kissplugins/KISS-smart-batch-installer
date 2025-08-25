@@ -26,22 +26,39 @@ jQuery(document).ready(function($) {
         clear(){ try { localStorage.removeItem(STATE_CACHE_KEY); } catch(_){} }
     };
 
-    // Unified row state manager (feature-flagged)
+    // Unified row state manager with FSM
     window.RowStateManager = window.RowStateManager || (function(){
+        const FSM = (window.KissSbiFSM || {});
+        const STATES = FSM.STATES || {};
+        const EVENTS = FSM.EVENTS || {};
         const api = {
-            states: new Map(),
+            machines: new Map(),
+            states: new Map(), // legacy snapshot cache for renderer
+            getMachine(repoName){
+                let m = this.machines.get(repoName);
+                if (!m && FSM.createMachine){
+                    m = FSM.createMachine(STATES.UNKNOWN, {});
+                    this.machines.set(repoName, m);
+                }
+                return m;
+            },
+            updateFromSnapshot(repoName, snap){
+                this.states.set(repoName, snap);
+                try { const obj = {}; this.states.forEach((v,k)=>{ obj[k]=v; }); RowStateCache.save(obj); } catch(_){ }
+                this.renderRow(repoName, snap);
+            },
             updateRow(repoName, updates){
+                // preserve backward compatibility: merge into last snapshot then refresh FSM
                 const current = this.states.get(repoName) || this.getDefaultState(repoName);
                 const next = Object.assign({}, current, updates);
-                this.states.set(repoName, next);
-                // persist to cache (only serializable plain object)
-                try {
-                    const obj = {}; this.states.forEach((v,k)=>{ obj[k]=v; }); RowStateCache.save(obj);
-                } catch(_){ }
-                this.renderRow(repoName, next);
+                const m = this.getMachine(repoName);
+                // Status refresh drives the machine to a consistent state
+                if (FSM && m && EVENTS.STATUS_REFRESH){ m.handle(EVENTS.STATUS_REFRESH, next); }
+                const snap = m && m.snapshot ? m.snapshot(repoName) : next;
+                this.updateFromSnapshot(repoName, snap);
             },
             getDefaultState(repoName){
-                return { repoName, isPlugin: null, isInstalled: null, isActive: null, pluginFile: null, settingsUrl: null, checking: false, installing: false, error: null };
+                return { repoName, isPlugin: null, isInstalled: null, isActive: null, pluginFile: null, settingsUrl: null, checking: false, installing: false, error: null, fsmState: (STATES && STATES.UNKNOWN) || 'UNKNOWN' };
             },
             renderRow(repoName, state){
                 const $row = $('tr[data-repo="' + repoName + '"]');
@@ -455,6 +472,8 @@ jQuery(document).ready(function($) {
     function checkInstalledFor(repoName, done){
         const $row = $('tr[data-repo="' + repoName + '"]');
         if (!$row.length){ if (done) done(); return; }
+        const m = RowStateManager.getMachine(repoName);
+        if (m && window.KissSbiFSM && KissSbiFSM.EVENTS && KissSbiFSM.EVENTS.CHECK_START) m.handle(KissSbiFSM.EVENTS.CHECK_START);
         $.ajax({
             url: kissSbiAjax.ajaxUrl,
             type: 'POST',
@@ -462,14 +481,24 @@ jQuery(document).ready(function($) {
             success: function(response){
                 if (response && response.success && response.data){
                     const payload = response.data;
-                    // Ensure checking is reset in UI
                     payload.checking = false;
-                    RowStateManager.updateRow(repoName, payload);
+                    const m = RowStateManager.getMachine(repoName);
+                    if (m && window.KissSbiFSM && KissSbiFSM.EVENTS && KissSbiFSM.EVENTS.STATUS_REFRESH){ m.handle(KissSbiFSM.EVENTS.STATUS_REFRESH, payload); }
+                    const snap = m && m.snapshot ? m.snapshot(repoName) : payload;
+                    RowStateManager.updateFromSnapshot(repoName, snap);
                 } else {
-                    RowStateManager.updateRow(repoName, { checking: false, error: 'status_failed' });
+                    const m = RowStateManager.getMachine(repoName);
+                    if (m && window.KissSbiFSM && KissSbiFSM.EVENTS && KissSbiFSM.EVENTS.CHECK_FAIL){ m.handle(KissSbiFSM.EVENTS.CHECK_FAIL, { error: 'status_failed' }); }
+                    const snap = m && m.snapshot ? m.snapshot(repoName) : { checking:false, error:'status_failed' };
+                    RowStateManager.updateFromSnapshot(repoName, snap);
                 }
             },
-            error: function(){ RowStateManager.updateRow(repoName, { error: 'status_failed', checking: false }); },
+            error: function(){
+                const m = RowStateManager.getMachine(repoName);
+                if (m && window.KissSbiFSM && KissSbiFSM.EVENTS && KissSbiFSM.EVENTS.CHECK_FAIL){ m.handle(KissSbiFSM.EVENTS.CHECK_FAIL, { error: 'status_failed' }); }
+                const snap = m && m.snapshot ? m.snapshot(repoName) : { checking:false, error:'status_failed' };
+                RowStateManager.updateFromSnapshot(repoName, snap);
+            },
             complete: function(){ if (done) done(); }
         });
     }
@@ -540,6 +569,9 @@ jQuery(document).ready(function($) {
         const originalText = $button.text();
         $button.prop('disabled', true).text(kissSbiAjax.strings.installing);
 
+        // FSM: INSTALL_START
+        try { const m = RowStateManager.getMachine(repoName); if (m && KissSbiFSM && KissSbiFSM.EVENTS && KissSbiFSM.EVENTS.INSTALL_START) m.handle(KissSbiFSM.EVENTS.INSTALL_START); } catch(_){ }
+
         $.ajax({
             url: kissSbiAjax.ajaxUrl,
             type: 'POST',
@@ -550,16 +582,20 @@ jQuery(document).ready(function($) {
                 activate: activate
             },
             success: function(response) {
+                const m = RowStateManager.getMachine(repoName);
                 if (response.success) {
+                    if (m && KissSbiFSM && KissSbiFSM.EVENTS && KissSbiFSM.EVENTS.INSTALL_SUCCESS) m.handle(KissSbiFSM.EVENTS.INSTALL_SUCCESS, { activated: !!response.data.activated, plugin_file: response.data.plugin_file });
+                    const snap = m && m.snapshot ? m.snapshot(repoName) : { isInstalled:true, isActive:!!response.data.activated, pluginFile: response.data.plugin_file || null, isPlugin:true, checking:false, installing:false };
+                    RowStateManager.updateFromSnapshot(repoName, snap);
                     if (response.data.activated) {
-                        RowStateManager.updateRow(repoName, { isInstalled: true, isActive: true, pluginFile: response.data.plugin_file || null, isPlugin: true, checking: false, installing: false });
                         showSuccess('Plugin "' + repoName + '" installed and activated successfully.');
                     } else {
-                        // Show activate button
-                        RowStateManager.updateRow(repoName, { isInstalled: true, isActive: false, pluginFile: response.data.plugin_file || null, isPlugin: true, checking: false, installing: false });
                         showSuccess('Plugin "' + repoName + '" installed successfully. Click "Activate →" to activate it.');
                     }
                 } else {
+                    if (m && KissSbiFSM && KissSbiFSM.EVENTS && KissSbiFSM.EVENTS.INSTALL_FAIL) m.handle(KissSbiFSM.EVENTS.INSTALL_FAIL, { error: response.data });
+                    const snap = m && m.snapshot ? m.snapshot(repoName) : { checking:false, installing:false, error: String(response && response.data || 'install_failed') };
+                    RowStateManager.updateFromSnapshot(repoName, snap);
                     $button.prop('disabled', false).text(originalText);
                     var extra = (response && response.data && response.data.logs) ? '\nDetails: ' + (Array.isArray(response.data.logs) ? response.data.logs.join(' | ') : response.data.logs) : '';
                     showError('Failed to install "' + repoName + '": ' + response.data + extra);
@@ -567,6 +603,10 @@ jQuery(document).ready(function($) {
                 }
             },
             error: function() {
+                const m = RowStateManager.getMachine(repoName);
+                if (m && KissSbiFSM && KissSbiFSM.EVENTS && KissSbiFSM.EVENTS.INSTALL_FAIL) m.handle(KissSbiFSM.EVENTS.INSTALL_FAIL, { error: 'ajax_error' });
+                const snap = m && m.snapshot ? m.snapshot(repoName) : { checking:false, installing:false, error: 'ajax_error' };
+                RowStateManager.updateFromSnapshot(repoName, snap);
                 $button.prop('disabled', false).text(originalText);
                 showError('Ajax request failed for "' + repoName + '".');
             }
@@ -737,6 +777,9 @@ jQuery(document).ready(function($) {
         const originalText = $button.text();
         $button.prop('disabled', true).text('Activating...');
 
+        // FSM: ACTIVATE_START
+        try { const m = RowStateManager.getMachine(repoName); if (m && KissSbiFSM && KissSbiFSM.EVENTS && KissSbiFSM.EVENTS.ACTIVATE_START) m.handle(KissSbiFSM.EVENTS.ACTIVATE_START); } catch(_){ }
+
         $.ajax({
             url: kissSbiAjax.ajaxUrl,
             type: 'POST',
@@ -746,15 +789,25 @@ jQuery(document).ready(function($) {
                 plugin_file: pluginFile
             },
             success: function(response) {
+                const m = RowStateManager.getMachine(repoName);
                 if (response.success) {
-                    RowStateManager.updateRow(repoName, { isActive: true, isInstalled: true, pluginFile: pluginFile, checking: false });
+                    if (m && KissSbiFSM && KissSbiFSM.EVENTS && KissSbiFSM.EVENTS.ACTIVATE_SUCCESS) m.handle(KissSbiFSM.EVENTS.ACTIVATE_SUCCESS);
+                    const snap = m && m.snapshot ? m.snapshot(repoName) : { isActive:true, isInstalled:true, pluginFile: pluginFile, checking:false };
+                    RowStateManager.updateFromSnapshot(repoName, snap);
                     showSuccess('Plugin "' + repoName + '" activated successfully.');
                 } else {
+                    if (m && KissSbiFSM && KissSbiFSM.EVENTS && KissSbiFSM.EVENTS.ACTIVATE_FAIL) m.handle(KissSbiFSM.EVENTS.ACTIVATE_FAIL, { error: response.data });
+                    const snap = m && m.snapshot ? m.snapshot(repoName) : { checking:false, error: String(response && response.data || 'activate_failed') };
+                    RowStateManager.updateFromSnapshot(repoName, snap);
                     $button.prop('disabled', false).text(originalText);
                     showError('Failed to activate "' + repoName + '": ' + response.data);
                 }
             },
             error: function() {
+                const m = RowStateManager.getMachine(repoName);
+                if (m && KissSbiFSM && KissSbiFSM.EVENTS && KissSbiFSM.EVENTS.ACTIVATE_FAIL) m.handle(KissSbiFSM.EVENTS.ACTIVATE_FAIL, { error: 'ajax_error' });
+                const snap = m && m.snapshot ? m.snapshot(repoName) : { checking:false, error: 'ajax_error' };
+                RowStateManager.updateFromSnapshot(repoName, snap);
                 $button.prop('disabled', false).text(originalText);
                 showError('Ajax request failed for "' + repoName + '".');
             }

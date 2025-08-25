@@ -134,10 +134,19 @@ class AdminInterface
         // Keep server-side flag best-effort only; runtime JS will also detect PQS
         $has_pqs = function_exists('is_plugin_active') && is_plugin_active('plugin-quick-search/plugin-quick-search.php');
 
+        // FSM must load before admin.js (which consumes it)
+        wp_enqueue_script(
+            'kiss-sbi-fsm',
+            KISS_SBI_PLUGIN_URL . 'assets/fsm.js',
+            ['jquery'],
+            KISS_SBI_VERSION,
+            true
+        );
+
         wp_enqueue_script(
             'kiss-sbi-admin',
             KISS_SBI_PLUGIN_URL . 'assets/admin.js',
-            ['jquery'],
+            ['kiss-sbi-fsm','jquery'],
             KISS_SBI_VERSION,
             true
         );
